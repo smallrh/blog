@@ -1,0 +1,104 @@
+# 后端开发规范 (Node.js)
+
+## 🚫 禁止事项
+- **不生成mock数据**：所有数据使用真实数据库连接
+- **不生成测试代码**：测试代码单独处理，专注于核心功能
+- **不主动调用测试逻辑**：避免在开发过程中触发测试
+- **不随意添加新接口**：接口需有明确需求，新增前先确认
+- **不修改文档**：永远不要生成或修改使用文档
+- **不修改CSS/HTML结构**：后端不处理前端样式和结构
+
+## 🏗️ 项目结构规范
+```
+blog-backend/
+├── src/
+│   ├── routes/           # 路由文件
+│   ├── controllers/      # 控制器
+│   ├── services/         # 业务逻辑
+│   ├── models/           # 数据模型
+│   ├── middlewares/      # 中间件
+│   ├── constants/        # 常量定义
+│   ├── utils/            # 工具函数
+│   └── config/           # 配置文件
+├── sql/
+│   └── v1.0.0/          # SQL文件
+└── test/                # 测试文件
+```
+
+## ⚙️ 技术规范
+- **端口配置**：默认启动端口为9000
+- **接口方法**：统一使用GET/POST，避免REST风格
+- **状态码**：成功接口统一返回200，不使用201
+- **响应格式**：
+```javascript
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "count": 2,
+    "list": [...]
+  },
+  "page": {}
+}
+```
+- **错误处理**：错误层层向上抛出，统一错误处理中间件返回400
+- **Session管理**：本地测试从`.mock_session`读取session
+- **接口返回语言**：所有接口返回信息使用英文
+
+## 🗄️ 数据库设计规则
+- **表名**：使用下划线命名法
+- **主键**：统一使用`id`字段
+- **时间字段**：`created_at`和`updated_at`
+- **状态字段**：使用int类型
+- **用户ID**：VARCHAR类型，来自openid
+- **内容映射**：使用`target_type`和`target_id`
+- **禁止外键**：业务关联通过字段名保持一致
+
+### 全局配置表 (global_snippets)
+```sql
+CREATE TABLE global_snippets (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `key` VARCHAR(100) NOT NULL,
+    content TEXT NOT NULL,
+    type VARCHAR(50) DEFAULT 'json',
+    title VARCHAR(200),
+    language VARCHAR(20) DEFAULT 'zh-CN',
+    app VARCHAR(50) DEFAULT 'blog',
+    author VARCHAR(100),
+    version INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_snippet_key_app (`key`, app)
+);
+```
+
+## 🔄 开发流程
+### 接口开发流程
+1. **路由定义**：在`src/routes/`下按模块创建文件
+2. **控制器逻辑**：处理请求参数和响应
+3. **服务层**：实现业务逻辑，可调用缓存
+4. **缓存使用**：优先使用`src/utils/redisTools`，作用域缓存使用模块内`scopeRedisKey`方法
+
+### 缓存规范
+```javascript
+// 使用工具类缓存
+import { setCache, getCache } from '../utils/redisTools';
+
+// 作用域缓存
+const scopeRedisKey = (key) => `blog:post:${key}`;
+```
+
+## 🧪 测试规范
+- **测试范围**：仅测试`src/interface`和`blog_database_lib/common_interface`下的接口
+- **测试数据**：使用真实数据库，先创建再测试
+- **测试格式**：使用unittest格式
+- **统计接口**：默认只测试周统计
+- **枚举使用**：从`blog_database_lib/constant/`目录引用
+
+## ⚠️ 环境配置
+- **中间件检查**：使用前验证.env配置正确性
+- **数据库配置**：确认连接信息完整
+- **Redis配置**：检查缓存连接
+- **问题处理**：配置不正确时描述具体问题
+
+---
