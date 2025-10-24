@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS global_snippets (
 CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(50) PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
+    password VARCHAR(255),
     avatar VARCHAR(255),
     email VARCHAR(100),
     status INT DEFAULT 1,

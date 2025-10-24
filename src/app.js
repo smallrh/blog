@@ -1,5 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const session = require('express-session');
+const connectRedis = require('connect-redis');
 require('dotenv').config();
 
 // 导入路由和中间件
@@ -17,6 +19,37 @@ const PORT = process.env.PORT || 9000;
 // 配置中间件
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// 为了避免RedisStore的问题，我们暂时先使用内存存储session
+// 在生产环境中，应该使用Redis或其他持久化存储
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-session-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production', // 生产环境使用HTTPS
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24小时
+  }
+}));
+
+// 注意：在生产环境中，应该取消下面的注释并使用Redis存储
+/*
+const RedisStore = connectRedis(session);
+const sessionRedisClient = redisClient.duplicate();
+app.use(session({
+  store: new RedisStore({ client: sessionRedisClient }),
+  secret: process.env.SESSION_SECRET || 'your-session-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000
+  }
+}));
+*/
+
 app.use(logger);
 
 // 挂载路由
