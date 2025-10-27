@@ -1,0 +1,73 @@
+Node.js 博客后端总体架构
+blog-backend/
+├── src/
+│   ├── api/
+│   │   ├── frontend/         # 前台接口（访客端 API）
+│   │   │   ├── post.controller.js
+│   │   │   ├── comment.controller.js
+│   │   │   ├── category.controller.js
+│   │   │   ├── tag.controller.js
+│   │   │   └── settings.controller.js
+│   │   └── admin/            # 后台接口（管理端 API）
+│   │       ├── user.controller.js
+│   │       ├── post.controller.js
+│   │       ├── category.controller.js
+│   │       ├── tag.controller.js
+│   │       ├── comment.controller.js
+│   │       ├── settings.controller.js
+│   │       └── attachment.controller.js
+│   │
+│   ├── services/             # 业务逻辑层（Service）
+│   │   ├── post.service.js
+│   │   ├── user.service.js
+│   │   ├── comment.service.js
+│   │   ├── category.service.js
+│   │   ├── tag.service.js
+│   │   ├── settings.service.js
+│   │   ├── attachment.service.js
+│   │   └── stajs.service.js
+│   │
+│   ├── repositories/         # 数据访问层（DAO/Repository）
+│   │   ├── post.repository.js
+│   │   ├── user.repository.js
+│   │   ├── comment.repository.js
+│   │   ├── category.repository.js
+│   │   ├── tag.repository.js
+│   │   ├── settings.repository.js
+│   │   ├── attachment.repository.js
+│   │   └── common.repository.js
+│   │
+│   ├── models/               # 数据模型定义（TypeORM / Sequelize 实体）
+│   │   ├── post.entity.js
+│   │   ├── user.entity.js
+│   │   ├── category.entity.js
+│   │   ├── tag.entity.js
+│   │   ├── comment.entity.js
+│   │   ├── attachment.entity.js
+│   │   ├── postTag.entity.js
+│   │   └── settings.entity.js
+│   │
+│   ├── core/
+│   │   ├── database.js       # MySQL 连接（TypeORM/Sequelize）
+│   │   ├── redis.js          # Redis 客户端封装
+│   │   ├── logger.js         # 日志工具
+│   │   ├── config.js         # 全局配置加载
+│   │   └── response.js       # 通用响应结构
+│   │
+│   ├── middleware/           # 中间件（认证、权限、限流、日志）
+│   │   ├── auth.middleware.js
+│   │   ├── admin.middleware.js
+│   │   ├── limiter.middleware.js
+│   │   └── error.middleware.js
+│   │
+│   ├── utils/                # 工具类函数
+│   │   ├── crypto.js         # 密码加密、JWT 工具
+│   │   ├── validator.js      # 参数校验
+│   │   ├── pagination.js     # 分页工具
+│   │   ├── email.js          # 邮件工具(配置在.env文件中)
+│   │   └── cache.js          # 缓存封装（自动读写 Redis）
+│   │
+│   └── app.js                # Express 主应用入口
+│
+├── package.json
+└── .env

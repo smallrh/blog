@@ -1,0 +1,9 @@
+前台模块（src/api/frontend/）
+模块名	功能	对应表	Redis 使用
+文章模块	获取文章详情、分页列表、推荐文章	posts, categories, tags, users	blog:post:{slug}, blog:posts:page:{n}, blog:posts:hot
+分类模块	获取分类树、分类下的文章	categories, posts	blog:categories:tree, blog:category:{id}:posts
+标签模块	标签列表、标签下的文章	tags, post_tags, posts	blog:tags:hot, blog:tag:{id}:posts
+评论模块	查询评论树、新增评论	comments, users	blog:comments:{postId}, 评论新增后清除缓存
+系统配置模块	获取全局站点设置	settings	blog:settings（Hash 缓存）
+统计模块	浏览量 + 点赞计数	posts	blog:view:{postId}, blog:like:{postId}
+用户模块	用户注册、登录、查看资料	users	blog:user:{id}, blog:token:{id}

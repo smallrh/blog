@@ -1,0 +1,33 @@
+Repository 层（MySQL + ORM）
+
+推荐使用：
+
+TypeORM 或 Sequelize（支持装饰器 & 关系映射）
+
+每张表一个 repository，封装 CRUD 操作
+
+示例（TypeORM 风格）：
+
+// post.repository.js
+import { AppDataSource } from "../core/database";
+import { Post } from "../models/post.entity";
+
+export class PostRepository {
+  private repo = AppDataSource.getRepository(Post);
+
+  async findBySlug(slug: string) {
+    return this.repo.findOne({
+      where: { slug },
+      relations: ["user", "category", "tags"],
+    });
+  }
+
+  async createPost(data: Partial<Post>) {
+    return this.repo.save(data);
+  }
+
+  async updatePost(id: number, data: Partial<Post>) {
+    await this.repo.update({ id }, data);
+    return this.repo.findOneBy({ id });
+  }
+}

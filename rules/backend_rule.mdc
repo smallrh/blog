@@ -1,0 +1,10 @@
+后台模块（src/api/admin/）
+模块名	功能	对应表	Redis 使用
+用户管理	管理员登录、用户列表、禁用	users	用户缓存、Token缓存
+文章管理	新增/修改/删除/置顶文章	posts, categories, post_tags	修改后清除文章及分类缓存
+分类管理	管理分类	categories	更新后重建 blog:categories:tree
+标签管理	管理标签	tags, post_tags	更新后重建热门标签缓存
+评论管理	审核、删除评论	comments	清除对应文章评论缓存
+附件管理	上传文件、查看附件	attachments	缓存文件元信息
+系统设置管理	修改配置项	settings	更新后写入 Redis Hash
+统计模块	统计 PV、UV、用户、评论数	posts, comments, users	从 Redis 计数器聚合

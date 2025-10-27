@@ -1,0 +1,7 @@
+安全与性能策略
+策略	实现
+JWT 登录 + Redis 校验	登录生成 token，写入 Redis，登出或禁用后失效
+缓存双删策略	更新数据库后立即删除缓存，再延时 1s 二次删除
+防刷访问统计	Redis + IP 限制（blog:view:ip:{postId}:{ip} TTL 5min）
+异步计数写入	Redis 计数器定期批量写入 MySQL
+权限控制	后台接口中间件校验 user.role 是否为 admin

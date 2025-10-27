@@ -1,0 +1,40 @@
+Redis 缓存策略设计
+Key 名称	类型	用途	TTL
+blog:post:{id}	String(JSON)	文章详情	300s
+blog:posts:page:{n}	String(JSON)	文章分页缓存	300s
+blog:comments:{postId}	String(JSON)	评论列表	300s
+blog:categories:tree	String(JSON)	分类树缓存	600s
+blog:tags:hot	ZSET	热门标签排序	600s
+blog:user:{id}	Hash	用户信息缓存	1800s
+blog:token:{userId}	String	用户登录态	2h
+blog:settings	Hash	系统全局设置	永不过期
+blog:view:{postId}	Counter	浏览量计数	永久
+blog:stats:pv:{date}	Counter	PV 统计	1天
+
+
+
+Redis 封装层（common/redis）
+
+统一封装 Redis 操作，例如使用 ioredis：
+
+// redis.js
+import Redis from "ioredis";
+
+export const redis = new Redis({
+  host: process.env.REDIS_HOST,
+  port: 6379,
+  password: process.env.REDIS_PASSWORD,
+});
+
+export async function cacheGet(key: string) {
+  const value = await redis.get(key);
+  return value ? JSON.parse(value) : null;
+}
+
+export async function cacheSet(key: string, data: any, ttl = 300) {
+  await redis.set(key, JSON.stringify(data), "EX", ttl);
+}
+
+export async function cacheDel(key: string) {
+  await redis.del(key);
+}

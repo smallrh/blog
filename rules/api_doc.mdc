@@ -1,0 +1,20 @@
+接口文档结构
+
+docs/
+├── frontend/                 # 前台接口
+│   ├── auth.md              # 认证模块
+│   ├── post.md              # 文章模块
+│   ├── category.md          # 分类模块
+│   ├── tag.md               # 标签模块
+│   ├── comment.md           # 评论模块
+│   └── user.md              # 用户模块
+└── backend/                 # 后台接口
+    ├── auth.md              # 管理员认证
+    ├── dashboard.md         # 仪表盘
+    ├── post.md              # 文章管理
+    ├── category.md          # 分类管理
+    ├── tag.md               # 标签管理
+    ├── comment.md           # 评论管理
+    ├── user.md              # 用户管理
+    ├── attachment.md        # 附件管理
+    └── setting.md           # 系统设置

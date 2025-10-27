@@ -8,24 +8,8 @@
 - **不修改文档**：永远不要生成或修改使用文档
 - **不修改CSS/HTML结构**：后端不处理前端样式和结构
 
-## 🏗️ 项目结构规范
-```
-blog-backend/
-├── src/
-│   ├── routes/           # 路由文件
-│   ├── controllers/      # 控制器
-│   ├── services/         # 业务逻辑
-│   ├── models/           # 数据模型
-│   ├── middlewares/      # 中间件
-│   ├── constants/        # 常量定义
-│   ├── utils/            # 工具函数
-│   └── config/           # 配置文件
-├── sql/
-│   └── v1.0.0/          # SQL文件
-└── test/                # 测试文件
-```
-
 ## ⚙️ 技术规范
+- **代码风格**：commonJS
 - **端口配置**：默认启动端口为9000
 - **接口方法**：统一使用GET/POST，避免REST风格
 - **状态码**：成功接口统一返回200，不使用201
@@ -42,7 +26,6 @@ blog-backend/
 }
 ```
 - **错误处理**：错误层层向上抛出，统一错误处理中间件返回400
-- **Session管理**：本地测试从`.mock_session`读取session
 - **接口返回语言**：所有接口返回信息使用英文
 
 ## 🗄️ 数据库设计规则
@@ -54,46 +37,118 @@ blog-backend/
 - **内容映射**：使用`target_type`和`target_id`
 - **禁止外键**：业务关联通过字段名保持一致
 
-### 全局配置表 (global_snippets)
-```sql
-CREATE TABLE global_snippets (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    `key` VARCHAR(100) NOT NULL,
-    content TEXT NOT NULL,
-    type VARCHAR(50) DEFAULT 'json',
-    title VARCHAR(200),
-    language VARCHAR(20) DEFAULT 'zh-CN',
-    app VARCHAR(50) DEFAULT 'blog',
-    author VARCHAR(100),
-    version INT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_snippet_key_app (`key`, app)
-);
+## 🏗️ 架构分层
+### Repository 层（MySQL + ORM）
+- 推荐使用 TypeORM 或 Sequelize（支持装饰器 & 关系映射）
+- 每张表一个 repository，封装 CRUD 操作
+- 示例（TypeORM 风格）：
+```javascript
+// post.repository.js
+import { AppDataSource } from "../core/database";
+import { Post } from "../models/post.entity";
+
+export class PostRepository {
+  private repo = AppDataSource.getRepository(Post);
+
+  async findBySlug(slug: string) {
+    return this.repo.findOne({
+      where: { slug },
+      relations: ["user", "category", "tags"],
+    });
+  }
+
+  async createPost(data: Partial<Post>) {
+    return this.repo.save(data);
+  }
+
+  async updatePost(id: number, data: Partial<Post>) {
+    await this.repo.update({ id }, data);
+    return this.repo.findOneBy({ id });
+  }
+}
 ```
+
+### Service 层
+- 实现业务逻辑，可调用缓存
+- 负责数据处理和业务规则验证
+- 各服务层职责：
+  - PostService: 获取文章、发布、统计浏览量
+  - CommentService: 获取评论树、新增评论
+  - CategoryService: 分类查询与管理
+  - TagService: 标签管理与热门统计
+  - UserService: 注册、登录、角色管理
+  - SettingsService: 全局配置管理
+  - AttachmentService: 上传文件、删除附件
+  - StatsService: 访问量、UV统计
 
 ## 🔄 开发流程
 ### 接口开发流程
 1. **路由定义**：在`src/routes/`下按模块创建文件
 2. **控制器逻辑**：处理请求参数和响应
 3. **服务层**：实现业务逻辑，可调用缓存
-4. **缓存使用**：优先使用`src/utils/redisTools`，作用域缓存使用模块内`scopeRedisKey`方法
+4. **数据访问**：通过Repository层与数据库交互
 
-### 缓存规范
+### 模块划分
+#### 前台模块（src/api/frontend/）
+- 文章模块：获取文章详情、分页列表、推荐文章
+- 分类模块：获取分类树、分类下的文章
+- 标签模块：标签列表、标签下的文章
+- 评论模块：查询评论树、新增评论
+- 系统配置模块：获取全局站点设置
+- 统计模块：浏览量 + 点赞计数
+- 用户模块：用户注册、登录、查看资料
+
+#### 后台模块（src/api/admin/）
+- 用户管理：管理员登录、用户列表、禁用
+- 文章管理：新增/修改/删除/置顶文章
+- 分类管理：管理分类
+- 标签管理：管理标签
+- 评论管理：审核、删除评论
+- 附件管理：上传文件、查看附件
+- 系统设置管理：修改配置项
+- 统计模块：统计 PV、UV、用户、评论数
+
+## 📊 Redis 缓存规范
+### 缓存策略
+- **Key 命名规范**：`blog:{module}:{key}` 格式
+- **缓存双删策略**：更新数据库后立即删除缓存，再延时 1s 二次删除
+- **常用缓存键**：
+  - blog:post:{id}: 文章详情 (300s)
+  - blog:posts:page:{n}: 文章分页缓存 (300s)
+  - blog:categories:tree: 分类树缓存 (600s)
+  - blog:tags:hot: 热门标签排序 (600s)
+  - blog:user:{id}: 用户信息缓存 (1800s)
+  - blog:settings: 系统全局设置 (永不过期)
+  - blog:view:{postId}: 浏览量计数 (永久)
+
+### 缓存使用示例
 ```javascript
 // 使用工具类缓存
-import { setCache, getCache } from '../utils/redisTools';
+import { cacheGet, cacheSet, cacheDel } from '../common/redis';
 
 // 作用域缓存
 const scopeRedisKey = (key) => `blog:post:${key}`;
+
+// 获取缓存
+const cachedData = await cacheGet(scopeRedisKey('123'));
+
+// 设置缓存
+await cacheSet(scopeRedisKey('123'), data, 300);
+
+// 删除缓存
+await cacheDel(scopeRedisKey('123'));
 ```
 
+## 🔒 安全策略
+- **JWT 登录 + Redis 校验**：登录生成 token，写入 Redis，登出或禁用后失效
+- **防刷访问统计**：Redis + IP 限制（blog:view:ip:{postId}:{ip} TTL 5min）
+- **异步计数写入**：Redis 计数器定期批量写入 MySQL
+- **权限控制**：后台接口中间件校验 user.role 是否为 admin
+
 ## 🧪 测试规范
-- **测试范围**：仅测试`src/interface`和`blog_database_lib/common_interface`下的接口
 - **测试数据**：使用真实数据库，先创建再测试
 - **测试格式**：使用unittest格式
 - **统计接口**：默认只测试周统计
-- **枚举使用**：从`blog_database_lib/constant/`目录引用
 
 ## ⚠️ 环境配置
 - **中间件检查**：使用前验证.env配置正确性

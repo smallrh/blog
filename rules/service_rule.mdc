@@ -1,0 +1,10 @@
+服务层职责（Service）
+Service	功能	Redis 交互
+PostService	获取文章、发布、统计浏览量	查询缓存；更新后删除缓存；浏览计数器
+CommentService	获取评论树、新增评论	读写缓存，新增后清除评论缓存
+CategoryService	分类查询与管理	分类树缓存
+TagService	标签管理与热门统计	热门标签缓存
+UserService	注册、登录、角色管理	用户缓存、Token 缓存
+SettingsService	全局配置管理	Redis Hash
+AttachmentService	上传文件、删除附件	缓存文件元数据
+StatsService	访问量、UV统计	Redis 计数器聚合
