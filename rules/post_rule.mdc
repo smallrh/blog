@@ -1,0 +1,298 @@
+## 文章模块
+
+### 1. 模块介绍
+文章模块用于管理博客系统的核心内容，包括文章的发布、查询、点赞和收藏等功能，支持分类、标签关联和内容搜索。
+
+### 2. 数据结构
+
+#### Post 实体
+| 字段名 | 类型 | 描述 | 约束 |
+| :--- | :--- | :--- | :--- |
+| id | INT | 文章ID | 主键，自增 |
+| title | VARCHAR(255) | 文章标题 | 非空 |
+| slug | VARCHAR(255) | 文章别名 | 唯一，非空 |
+| content | LONGTEXT | 文章内容 | 非空 |
+| excerpt | TEXT | 文章摘要 | 可为空 |
+| cover | VARCHAR(255) | 封面图片 | 可为空 |
+| view_count | INT | 浏览量 | 默认0 |
+| like_count | INT | 点赞数 | 默认0 |
+| comment_count | INT | 评论数 | 默认0 |
+| category_id | INT | 分类ID | 可为空，外键 |
+| user_id | INT | 作者ID | 外键，非空 |
+| status | TINYINT | 状态 | 默认1（发布） |
+| created_at | DATETIME | 创建时间 | 默认当前时间 |
+| updated_at | DATETIME | 更新时间 | 默认当前时间 |
+
+### 3. 接口说明
+
+#### 3.1 获取文章列表
+**URL**: `/api/frontend/posts`
+**方法**: `GET`
+**功能**: 获取文章列表，支持分页、分类筛选、标签筛选和关键词搜索
+**参数**:
+- `page`: 页码，默认1
+- `pageSize`: 每页数量，默认10
+- `category_id`: 分类ID（可选）
+- `tag_id`: 标签ID（可选）
+- `search`: 搜索关键词（可选）
+- `order`: 排序字段，默认created_at
+- `sort`: 排序方向，默认desc
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "count": 100,
+    "list": [
+      {
+        "id": 1,
+        "title": "文章标题",
+        "slug": "post-title",
+        "excerpt": "文章摘要",
+        "cover": "封面图片URL",
+        "view_count": 100,
+        "like_count": 20,
+        "category": {
+          "id": 1,
+          "name": "分类名称"
+        },
+        "tags": [
+          { "id": 1, "name": "标签1" },
+          { "id": 2, "name": "标签2" }
+        ],
+        "user": {
+          "id": 1,
+          "name": "作者名",
+          "avatar": "头像URL"
+        },
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "page": {
+    "page": 1,
+    "pageSize": 10,
+    "total": 100,
+    "totalPages": 10
+  }
+}
+```
+
+#### 3.2 获取文章详情
+**URL**: `/api/frontend/posts/:slug`
+**方法**: `GET`
+**功能**: 通过文章别名或ID获取文章详情
+**参数**:
+- `slug`: 文章别名或ID（路径参数）
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "id": 1,
+    "title": "文章标题",
+    "slug": "post-title",
+    "content": "文章内容",
+    "cover": "封面图片URL",
+    "view_count": 101,
+    "like_count": 20,
+    "comment_count": 5,
+    "category": {
+      "id": 1,
+      "name": "分类名称",
+      "slug": "category-slug"
+    },
+    "tags": [
+      { "id": 1, "name": "标签1", "slug": "tag-1" },
+      { "id": 2, "name": "标签2", "slug": "tag-2" }
+    ],
+    "user": {
+      "id": 1,
+      "name": "作者名",
+      "avatar": "头像URL"
+    },
+    "created_at": "2024-01-01T00:00:00Z",
+    "updated_at": "2024-01-02T00:00:00Z"
+  },
+  "page": {}
+}
+```
+
+#### 3.3 获取热门文章
+**URL**: `/api/frontend/posts/hot`
+**方法**: `GET`
+**功能**: 获取浏览量最高的热门文章
+**参数**:
+- `limit`: 返回数量，默认5
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "list": [
+      {
+        "id": 1,
+        "title": "热门文章1",
+        "slug": "hot-post-1",
+        "cover": "封面图片URL",
+        "view_count": 1000
+      }
+    ]
+  },
+  "page": {}
+}
+```
+
+#### 3.4 获取最新文章
+**URL**: `/api/frontend/posts/latest`
+**方法**: `GET`
+**功能**: 获取最新发布的文章
+**参数**:
+- `limit`: 返回数量，默认10
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "list": [
+      // 文章列表，格式同文章列表接口
+    ]
+  },
+  "page": {}
+}
+```
+
+#### 3.5 点赞文章
+**URL**: `/api/frontend/posts/:id/like`
+**方法**: `POST`
+**功能**: 点赞或取消点赞文章
+**参数**:
+- `id`: 文章ID（路径参数）
+**请求头**:
+- `Authorization`: Bearer jwt_token
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "like_count": 21,
+    "is_liked": true
+  },
+  "page": {}
+}
+```
+
+#### 3.6 取消点赞
+**URL**: `/api/frontend/posts/:id/unlike`
+**方法**: `POST`
+**功能**: 取消对文章的点赞
+**参数**:
+- `id`: 文章ID（路径参数）
+**请求头**:
+- `Authorization`: Bearer jwt_token
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "like_count": 20,
+    "is_liked": false
+  },
+  "page": {}
+}
+```
+
+#### 3.7 收藏文章
+**URL**: `/api/frontend/posts/:id/collection`
+**方法**: `POST`
+**功能**: 收藏或取消收藏文章
+**参数**:
+- `id`: 文章ID（路径参数）
+**请求头**:
+- `Authorization`: Bearer jwt_token
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "is_collected": true
+  },
+  "page": {}
+}
+```
+
+#### 3.8 获取文章评论
+**URL**: `/api/frontend/posts/:id/comments`
+**方法**: `GET`
+**功能**: 获取指定文章的评论列表
+**参数**:
+- `id`: 文章ID（路径参数）
+- `page`: 页码，默认1
+- `pageSize`: 每页数量，默认20
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "list": [],
+    "pagination": {
+      "page": 1,
+      "pageSize": 20,
+      "total": 0,
+      "totalPages": 0
+    }
+  },
+  "page": {}
+}
+```
+
+### 4. 服务层实现
+
+#### 4.1 PostService 类
+核心服务类，提供文章相关的所有业务逻辑。
+
+**主要方法**:
+
+- `getPosts(page, pageSize, filters)`: 获取文章列表，支持分页和筛选
+- `getPostDetail(identifier)`: 获取文章详情，支持通过ID或slug查询
+- `getHotPosts(limit)`: 获取热门文章列表
+- `likePost(postId, userId)`: 点赞或取消点赞文章
+- `unlikePost(postId, userId)`: 取消点赞文章
+- `collectPost(postId, userId)`: 收藏或取消收藏文章
+
+### 5. 缓存策略
+
+- 使用Redis缓存热门文章列表，有效期1小时
+- 使用Redis缓存文章点赞状态，有效期1天
+- 文章浏览量实时更新
+- 文章点赞数和收藏状态支持Redis缓存优化
+
+### 6. 安全考虑
+
+- 文章详情访问无需认证，但点赞、收藏等操作需要用户登录
+- 使用JWT token验证用户身份
+- 防止SQL注入，使用参数化查询
+- 支持对文章内容进行HTML转义，防止XSS攻击
+
+### 7. 性能优化
+
+- 数据库索引优化（title, slug, created_at等字段）
+- 使用Redis缓存热点数据
+- 支持数据分页，避免一次性返回大量数据
+- 延迟加载和按需获取相关数据（如标签、评论等）

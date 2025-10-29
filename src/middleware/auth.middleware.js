@@ -1,7 +1,7 @@
-import jwt from 'jsonwebtoken';
-import { redis } from '../core/redis.js';
-import { config } from '../core/config.js';
-import { unauthorizedResponse } from '../core/response.js';
+const jwt = require('jsonwebtoken');
+const redis = require('../core/redis');
+const { config } = require('../core/config');
+const { unauthorizedResponse } = require('../core/response');
 
 /**
  * JWT认证中间件
@@ -9,7 +9,7 @@ import { unauthorizedResponse } from '../core/response.js';
  * @param {Object} res - Express响应对象
  * @param {Function} next - 下一个中间件函数
  */
-export const authMiddleware = async (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   try {
     // 获取Authorization头
     const authHeader = req.headers.authorization;
@@ -51,10 +51,58 @@ export const authMiddleware = async (req, res, next) => {
 };
 
 /**
+ * 认证中间件 - 兼容旧的函数名
+ * @param {Object} req - Express请求对象
+ * @param {Object} res - Express响应对象
+ * @param {Function} next - 下一个中间件函数
+ */
+const authenticateToken = async (req, res, next) => {
+  try {
+    // 获取Authorization头
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return unauthorizedResponse(res, '请先登录');
+    }
+
+    // 检查Bearer前缀
+    const [bearer, token] = authHeader.split(' ');
+    if (bearer !== 'Bearer' || !token) {
+      return unauthorizedResponse(res, '无效的认证格式');
+    }
+
+    // 验证JWT token
+    const decoded = jwt.verify(token, config.jwt.secret);
+    
+    // 检查token是否在Redis中被列入黑名单（已登出）
+    const isBlacklisted = await redis.exists(`token:blacklist:${token}`);
+    if (isBlacklisted) {
+      return unauthorizedResponse(res, 'Token已被吊销');
+    }
+
+    // 将用户信息存储到请求对象中
+    req.userId = decoded.id;
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role || 'user'
+    };
+
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return unauthorizedResponse(res, 'Token已过期');
+    } else if (error.name === 'JsonWebTokenError') {
+      return unauthorizedResponse(res, '无效的Token');
+    }
+    return unauthorizedResponse(res, '认证失败');
+  }
+};
+
+/**
  * 可选的认证中间件
  * 如果有token则验证，没有也可以继续
  */
-export const optionalAuthMiddleware = async (req, res, next) => {
+const optionalAuthMiddleware = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     if (authHeader) {
@@ -83,7 +131,7 @@ export const optionalAuthMiddleware = async (req, res, next) => {
  * 权限检查中间件
  * @param {Array} requiredRoles - 所需角色列表
  */
-export const roleMiddleware = (requiredRoles) => {
+const roleMiddleware = (requiredRoles) => {
   return (req, res, next) => {
     if (!req.user) {
       return unauthorizedResponse(res, 'Authentication required');
@@ -98,4 +146,11 @@ export const roleMiddleware = (requiredRoles) => {
 
     next();
   };
+};
+
+module.exports = {
+  authMiddleware,
+  authenticateToken,
+  optionalAuthMiddleware,
+  roleMiddleware
 };

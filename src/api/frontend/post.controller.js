@@ -2,6 +2,8 @@ const express = require('express');
 const { successResponse, errorResponse, notFoundResponse } = require('../../core/response');
 const { validate } = require('../../utils/validator');
 const { paginationUtil } = require('../../utils/pagination');
+const PostService = require('../../services/post.service');
+const { authenticateToken } = require('../../middleware/auth.middleware');
 
 const router = express.Router();
 
@@ -21,42 +23,55 @@ const router = express.Router();
  *         description: 每页大小
  *         default: 10
  *       - in: query
- *         name: category
+ *         name: category_id
  *         description: 分类ID
  *       - in: query
- *         name: tag
+ *         name: tag_id
  *         description: 标签ID
  *       - in: query
  *         name: search
  *         description: 搜索关键词
+ *       - in: query
+ *         name: order
+ *         description: 排序字段
+ *         default: "created_at"
+ *       - in: query
+ *         name: sort
+ *         description: 排序方向（asc/desc）
+ *         default: "desc"
  *     responses:
- *       200: { description: 'Get posts successful' }
+ *       200: { description: '获取文章列表成功' }
  */
 router.get('/', async (req, res) => {
   try {
     // 解析分页参数
-    const { page, pageSize, skip, take } = paginationUtil.parsePagination(req.query);
+    const { page, pageSize } = paginationUtil.parsePagination(req.query);
     
     // 获取筛选条件
     const filters = {};
-    if (req.query.category && validate.isPositiveInteger(req.query.category)) {
-      filters.categoryId = parseInt(req.query.category);
+    if (req.query.category_id && validate.isPositiveInteger(req.query.category_id)) {
+      filters.categoryId = parseInt(req.query.category_id);
     }
-    if (req.query.tag && validate.isPositiveInteger(req.query.tag)) {
-      filters.tagId = parseInt(req.query.tag);
+    if (req.query.tag_id && validate.isPositiveInteger(req.query.tag_id)) {
+      filters.tagId = parseInt(req.query.tag_id);
     }
     if (req.query.search) {
       filters.search = req.query.search;
     }
     
-    // 注意：这里需要实现文章列表查询逻辑
-    // 暂时返回空数组，实际实现需要补充
+    const result = await PostService.getPosts(page, pageSize, filters);
+    
     return successResponse(res, {
-      list: [],
-      pagination: paginationUtil.generatePagination(page, pageSize, 0)
-    }, 'Get posts successful');
+      count: result.pagination.total,
+      list: result.list
+    }, 'Success', {
+      page: page,
+      pageSize: pageSize,
+      total: result.pagination.total,
+      totalPages: result.pagination.totalPages
+    });
   } catch (error) {
-    return errorResponse(res, error.message);
+    return errorResponse(res, error.message || '获取文章列表失败');
   }
 });
 
@@ -70,21 +85,23 @@ router.get('/', async (req, res) => {
  *       - in: query
  *         name: limit
  *         description: 返回数量
- *         default: 10
+ *         default: 5
  *     responses:
- *       200: { description: 'Get hot posts successful' }
+ *       200: { description: '获取热门文章成功' }
  */
 router.get('/hot', async (req, res) => {
   try {
     const limit = req.query.limit && validate.isPositiveInteger(req.query.limit) 
       ? parseInt(req.query.limit) 
-      : 10;
+      : 5;
     
-    // 注意：这里需要实现热门文章查询逻辑
-    // 暂时返回空数组，实际实现需要补充
-    return successResponse(res, [], 'Get hot posts successful');
+    const posts = await PostService.getHotPosts(limit);
+    
+    return successResponse(res, {
+      list: posts
+    }, 'Success');
   } catch (error) {
-    return errorResponse(res, error.message);
+    return errorResponse(res, error.message || '获取热门文章失败');
   }
 });
 
@@ -100,7 +117,7 @@ router.get('/hot', async (req, res) => {
  *         description: 返回数量
  *         default: 10
  *     responses:
- *       200: { description: 'Get latest posts successful' }
+ *       200: { description: '获取最新文章成功' }
  */
 router.get('/latest', async (req, res) => {
   try {
@@ -108,48 +125,45 @@ router.get('/latest', async (req, res) => {
       ? parseInt(req.query.limit) 
       : 10;
     
-    // 注意：这里需要实现最新文章查询逻辑
-    // 暂时返回空数组，实际实现需要补充
-    return successResponse(res, [], 'Get latest posts successful');
+    // 使用getPosts方法获取最新文章，限制数量
+    const result = await PostService.getPosts(1, limit, {});
+    
+    return successResponse(res, {
+      list: result.list
+    }, 'Success');
   } catch (error) {
-    return errorResponse(res, error.message);
+    return errorResponse(res, error.message || '获取最新文章失败');
   }
 });
 
 /**
  * @swagger
- * /api/frontend/posts/:id:
+ * /api/frontend/posts/:slug:
  *   get:
  *     summary: 获取文章详情
  *     tags: [Posts]
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: slug
  *         required: true
- *         description: 文章ID
+ *         description: 文章别名或ID
  *     responses:
- *       200: { description: 'Get post successful' }
- *       404: { description: 'Post not found' }
+ *       200: { description: '获取文章详情成功' }
+ *       404: { description: '文章不存在' }
  */
-router.get('/:id', async (req, res) => {
+router.get('/:slug', async (req, res) => {
   try {
-    const postId = req.params.id;
+    const identifier = req.params.slug;
     
-    if (!validate.isPositiveInteger(postId)) {
-      return errorResponse(res, 'Invalid post ID');
-    }
-    
-    // 注意：这里需要实现文章详情查询逻辑
-    // 暂时返回空对象，实际实现需要补充
-    const post = null;
+    const post = await PostService.getPostDetail(identifier);
     
     if (!post) {
-      return notFoundResponse(res, 'Post not found');
+      return notFoundResponse(res, '文章不存在');
     }
     
-    return successResponse(res, post, 'Get post successful');
+    return successResponse(res, post, 'Success');
   } catch (error) {
-    return errorResponse(res, error.message);
+    return errorResponse(res, error.message || '获取文章详情失败');
   }
 });
 
@@ -166,16 +180,64 @@ router.get('/:id', async (req, res) => {
  *         required: true
  *         description: 文章ID
  *     responses:
- *       200: { description: 'Like post successful' }
- *       404: { description: 'Post not found' }
+ *       200: { description: '点赞成功' }
+ *       404: { description: '文章不存在' }
+ *       401: { description: '未授权' }
  */
-router.post('/:id/like', async (req, res) => {
+router.post('/:id/like', authenticateToken, async (req, res) => {
   try {
-    // 注意：这里需要实现文章点赞逻辑，包括用户认证
-    // 暂时返回成功，实际实现需要补充
-    return successResponse(res, null, 'Like post successful');
+    const postId = req.params.id;
+    const userId = req.userId;
+    
+    if (!validate.isPositiveInteger(postId)) {
+      return errorResponse(res, '无效的文章ID');
+    }
+    
+    const result = await PostService.likePost(parseInt(postId), userId);
+    
+    return successResponse(res, result, 'Success');
   } catch (error) {
-    return errorResponse(res, error.message);
+    if (error.message === '文章不存在') {
+      return notFoundResponse(res, error.message);
+    }
+    return errorResponse(res, error.message || '点赞操作失败');
+  }
+});
+
+/**
+ * @swagger
+ * /api/frontend/posts/:id/unlike:
+ *   post:
+ *     summary: 取消点赞
+ *     tags: [Posts]
+ *     security: [{ bearerAuth: [] }]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         description: 文章ID
+ *     responses:
+ *       200: { description: '取消点赞成功' }
+ *       404: { description: '文章不存在' }
+ *       401: { description: '未授权' }
+ */
+router.post('/:id/unlike', authenticateToken, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const userId = req.userId;
+    
+    if (!validate.isPositiveInteger(postId)) {
+      return errorResponse(res, '无效的文章ID');
+    }
+    
+    const result = await PostService.unlikePost(parseInt(postId), userId);
+    
+    return successResponse(res, result, 'Success');
+  } catch (error) {
+    if (error.message === '文章不存在') {
+      return notFoundResponse(res, error.message);
+    }
+    return errorResponse(res, error.message || '取消点赞操作失败');
   }
 });
 
@@ -192,16 +254,27 @@ router.post('/:id/like', async (req, res) => {
  *         required: true
  *         description: 文章ID
  *     responses:
- *       200: { description: 'Collect post successful' }
- *       404: { description: 'Post not found' }
+ *       200: { description: '收藏成功' }
+ *       404: { description: '文章不存在' }
+ *       401: { description: '未授权' }
  */
-router.post('/:id/collection', async (req, res) => {
+router.post('/:id/collection', authenticateToken, async (req, res) => {
   try {
-    // 注意：这里需要实现文章收藏逻辑，包括用户认证
-    // 暂时返回成功，实际实现需要补充
-    return successResponse(res, null, 'Collect post successful');
+    const postId = req.params.id;
+    const userId = req.userId;
+    
+    if (!validate.isPositiveInteger(postId)) {
+      return errorResponse(res, '无效的文章ID');
+    }
+    
+    const result = await PostService.collectPost(parseInt(postId), userId);
+    
+    return successResponse(res, result, 'Success');
   } catch (error) {
-    return errorResponse(res, error.message);
+    if (error.message === '文章不存在') {
+      return notFoundResponse(res, error.message);
+    }
+    return errorResponse(res, error.message || '收藏操作失败');
   }
 });
 
@@ -225,22 +298,28 @@ router.post('/:id/collection', async (req, res) => {
  *         description: 每页大小
  *         default: 20
  *     responses:
- *       200: { description: 'Get post comments successful' }
- *       404: { description: 'Post not found' }
+ *       200: { description: '获取文章评论成功' }
+ *       404: { description: '文章不存在' }
  */
 router.get('/:id/comments', async (req, res) => {
   try {
-    // 解析分页参数
-    const { page, pageSize, skip, take } = paginationUtil.parsePagination(req.query);
+    const postId = req.params.id;
     
-    // 注意：这里需要实现文章评论查询逻辑
-    // 暂时返回空数组，实际实现需要补充
+    if (!validate.isPositiveInteger(postId)) {
+      return errorResponse(res, '无效的文章ID');
+    }
+    
+    // 解析分页参数
+    const { page, pageSize } = paginationUtil.parsePagination(req.query);
+    
+    // 这里可以调用评论服务获取文章评论
+    // 暂时返回空数组，实际项目中可以集成CommentService
     return successResponse(res, {
       list: [],
       pagination: paginationUtil.generatePagination(page, pageSize, 0)
-    }, 'Get post comments successful');
+    }, 'Success');
   } catch (error) {
-    return errorResponse(res, error.message);
+    return errorResponse(res, error.message || '获取文章评论失败');
   }
 });
 

@@ -1,8 +1,40 @@
 const express = require('express');
 const { successResponse, errorResponse } = require('../../core/response');
 const { validate } = require('../../utils/validator');
+const CategoryService = require('../../services/category.service');
 
 const router = express.Router();
+const categoryService = new CategoryService();
+
+/**
+ * @swagger
+ * /api/frontend/categories/tree:
+ *   get:
+ *     summary: 获取分类树
+ *     tags: [Categories]
+ *     responses:
+ *       200: 
+ *         description: 获取分类树成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id: { type: integer }
+ *                   name: { type: string }
+ *                   slug: { type: string }
+ *                   children: { type: array }
+ */
+router.get('/tree', async (req, res) => {
+  try {
+    const categoryTree = await categoryService.getCategoryTree();
+    return successResponse(res, categoryTree, '获取分类树成功');
+  } catch (error) {
+    return errorResponse(res, error.message);
+  }
+});
 
 /**
  * @swagger
@@ -12,24 +44,45 @@ const router = express.Router();
  *     tags: [Categories]
  *     parameters:
  *       - in: query
- *         name: withPostCount
- *         description: 是否包含文章数量
- *         default: false
+ *         name: parent_id
+ *         description: 父分类ID
+ *         schema: { type: integer }
  *       - in: query
- *         name: withHot
- *         description: 是否获取热门分类
- *         default: false
+ *         name: page
+ *         description: 页码
+ *         default: 1
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: pageSize
+ *         description: 每页数量
+ *         default: 20
+ *         schema: { type: integer }
  *     responses:
- *       200: { description: 'Get categories successful' }
+ *       200: 
+ *         description: 获取分类列表成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 list: { type: array }
+ *                 count: { type: integer }
+ *                 page: { type: integer }
+ *                 pageSize: { type: integer }
+ *                 totalPages: { type: integer }
  */
 router.get('/', async (req, res) => {
   try {
-    const withPostCount = req.query.withPostCount === 'true';
-    const withHot = req.query.withHot === 'true';
+    const parent_id = req.query.parent_id ? parseInt(req.query.parent_id) : null;
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 20;
     
-    // 注意：这里需要实现分类列表查询逻辑
-    // 暂时返回空数组，实际实现需要补充
-    return successResponse(res, [], 'Get categories successful');
+    if (page < 1 || pageSize < 1) {
+      return errorResponse(res, '页码和每页数量必须大于0');
+    }
+    
+    const result = await categoryService.getCategories({ parent_id, page, pageSize });
+    return successResponse(res, result, '获取分类列表成功');
   } catch (error) {
     return errorResponse(res, error.message);
   }
@@ -37,76 +90,118 @@ router.get('/', async (req, res) => {
 
 /**
  * @swagger
- * /api/frontend/categories/:id:
+ * /api/frontend/categories/{slug}:
  *   get:
  *     summary: 获取分类详情
- *     tags: [Categories]
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         description: 分类ID
- *     responses:
- *       200: { description: 'Get category successful' }
- *       404: { description: 'Category not found' }
- */
-router.get('/:id', async (req, res) => {
-  try {
-    const categoryId = req.params.id;
-    
-    if (!validate.isPositiveInteger(categoryId)) {
-      return errorResponse(res, 'Invalid category ID');
-    }
-    
-    // 注意：这里需要实现分类详情查询逻辑
-    // 暂时返回空对象，实际实现需要补充
-    const category = null;
-    
-    if (!category) {
-      return successResponse(res, null, 'Category not found');
-    }
-    
-    return successResponse(res, category, 'Get category successful');
-  } catch (error) {
-    return errorResponse(res, error.message);
-  }
-});
-
-/**
- * @swagger
- * /api/frontend/categories/:slug:
- *   get:
- *     summary: 通过slug获取分类
  *     tags: [Categories]
  *     parameters:
  *       - in: path
  *         name: slug
  *         required: true
  *         description: 分类slug
+ *         schema: { type: string }
  *     responses:
- *       200: { description: 'Get category by slug successful' }
- *       404: { description: 'Category not found' }
+ *       200: 
+ *         description: 获取分类详情成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: integer }
+ *                 name: { type: string }
+ *                 slug: { type: string }
+ *                 parent_id: { type: integer }
+ *                 post_count: { type: integer }
+ *                 sort_order: { type: integer }
+ *                 status: { type: integer }
+ *                 created_at: { type: string }
+ *                 updated_at: { type: string }
+ *       404: { description: '分类不存在' }
  */
 router.get('/:slug', async (req, res) => {
   try {
     const slug = req.params.slug;
     
-    if (!slug || !validate.slug(slug)) {
-      return errorResponse(res, 'Invalid category slug');
+    if (!slug || typeof slug !== 'string') {
+      return errorResponse(res, '无效的分类别名');
     }
     
-    // 注意：这里需要实现通过slug查询分类的逻辑
-    // 暂时返回空对象，实际实现需要补充
-    const category = null;
+    // 检查是否是获取分类下文章的请求
+    if (req.path.endsWith('/posts')) {
+      const postSlug = slug.replace(/\/posts$/, '');
+      return await getCategoryPosts(req, res, postSlug);
+    }
+    
+    const category = await categoryService.getCategoryBySlug(slug);
     
     if (!category) {
-      return successResponse(res, null, 'Category not found');
+      return errorResponse(res, '分类不存在', 404);
     }
     
-    return successResponse(res, category, 'Get category by slug successful');
+    return successResponse(res, category, '获取分类详情成功');
   } catch (error) {
     return errorResponse(res, error.message);
   }
 });
 
+/**
+ * @swagger
+ * /api/frontend/categories/{slug}/posts:
+ *   get:
+ *     summary: 获取分类下文章列表
+ *     tags: [Categories]
+ *     parameters:
+ *       - in: path
+ *         name: slug
+ *         required: true
+ *         description: 分类slug
+ *         schema: { type: string }
+ *       - in: query
+ *         name: page
+ *         description: 页码
+ *         default: 1
+ *         schema: { type: integer }
+ *       - in: query
+ *         name: pageSize
+ *         description: 每页数量
+ *         default: 10
+ *         schema: { type: integer }
+ *     responses:
+ *       200: 
+ *         description: 获取分类文章列表成功
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 category: { type: object }
+ *                 list: { type: array }
+ *                 count: { type: integer }
+ *                 page: { type: integer }
+ *                 pageSize: { type: integer }
+ *                 totalPages: { type: integer }
+ *       404: { description: '分类不存在' }
+ */
+async function getCategoryPosts(req, res, slug) {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 10;
+    
+    if (page < 1 || pageSize < 1) {
+      return errorResponse(res, '页码和每页数量必须大于0');
+    }
+    
+    const result = await categoryService.getPostsByCategory(slug, page, pageSize);
+    return successResponse(res, result, '获取分类文章列表成功');
+  } catch (error) {
+    return errorResponse(res, error.message);
+  }
+}
+
+// 显式定义 /posts 路由，确保能正确匹配
+router.get('/:slug/posts', async (req, res) => {
+  const slug = req.params.slug;
+  return await getCategoryPosts(req, res, slug);
+});
 module.exports = router;

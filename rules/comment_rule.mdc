@@ -1,0 +1,179 @@
+## 评论模块
+
+### 1. 模块介绍
+评论模块用于处理文章评论的创建、查询、点赞和删除等功能，支持多级评论回复结构。
+
+### 2. 数据结构
+
+#### Comment 实体
+| 字段名 | 类型 | 描述 | 约束 |
+| :--- | :--- | :--- | :--- |
+| id | INT | 评论ID | 主键，自增 |
+| content | TEXT | 评论内容 | 非空 |
+| parent_id | INT | 父评论ID | 可为空，用于多级评论 |
+| user_agent | VARCHAR(255) | 用户代理 | 可为空 |
+| ip_address | VARCHAR(50) | IP地址 | 可为空 |
+| status | TINYINT | 状态 | 默认1（启用） |
+| user_id | INT | 用户ID | 外键，关联用户表 |
+| post_id | INT | 文章ID | 外键，关联文章表 |
+| created_at | DATETIME | 创建时间 | 默认当前时间 |
+| updated_at | DATETIME | 更新时间 | 默认当前时间 |
+
+### 3. 接口说明
+
+#### 3.1 获取文章评论列表
+**URL**: `/api/frontend/comments/post/:postId`
+**方法**: `GET`
+**功能**: 获取指定文章的评论列表，支持分页和树形结构
+**参数**:
+- `postId`: 文章ID（路径参数）
+- `page`: 页码，默认1
+- `pageSize`: 每页数量，默认10
+- `sort`: 排序方式，默认按创建时间倒序
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "Success",
+  "data": {
+    "count": 100,
+    "list": [
+      {
+        "id": 1,
+        "content": "评论内容",
+        "parent_id": null,
+        "user_id": 1,
+        "user": {
+          "id": 1,
+          "username": "用户名",
+          "avatar": "头像URL"
+        },
+        "post_id": 1,
+        "created_at": "2023-01-01T00:00:00Z",
+        "updated_at": "2023-01-01T00:00:00Z",
+        "like_count": 10,
+        "is_liked": false,
+        "replies": [
+          // 子评论列表
+        ]
+      }
+    ]
+  },
+  "page": {
+    "page": 1,
+    "pageSize": 10,
+    "totalPages": 10
+  }
+}
+```
+
+#### 3.2 发表评论
+**URL**: `/api/frontend/comments`
+**方法**: `POST`
+**功能**: 创建新评论
+**参数**:
+- `post_id`: 文章ID
+- `content`: 评论内容
+- `parent_id`: 父评论ID（可选，用于回复）
+
+**请求示例**:
+```json
+{
+  "post_id": 1,
+  "content": "这是一条评论",
+  "parent_id": null
+}
+```
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "评论成功",
+  "data": {
+    "id": 1,
+    "content": "这是一条评论",
+    "parent_id": null,
+    "user_id": 1,
+    "post_id": 1,
+    "created_at": "2023-01-01T00:00:00Z",
+    "updated_at": "2023-01-01T00:00:00Z"
+  },
+  "page": {}
+}
+```
+
+#### 3.3 点赞评论
+**URL**: `/api/frontend/comments/:id/like`
+**方法**: `POST`
+**功能**: 点赞或取消点赞评论
+**参数**:
+- `id`: 评论ID（路径参数）
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "点赞成功",
+  "data": {
+    "is_liked": true,
+    "like_count": 11
+  },
+  "page": {}
+}
+```
+
+#### 3.4 删除评论
+**URL**: `/api/frontend/comments/:id`
+**方法**: `DELETE`
+**功能**: 删除指定评论
+**参数**:
+- `id`: 评论ID（路径参数）
+
+**响应**:
+```json
+{
+  "code": 200,
+  "message": "删除成功",
+  "data": { "success": true },
+  "page": {}
+}
+```
+
+### 4. 服务层实现
+
+#### 4.1 获取评论列表
+- 支持分页查询
+- 加载用户信息
+- 转换为树形结构
+- 计算点赞数量和用户点赞状态
+
+#### 4.2 创建评论
+- 参数验证
+- 创建评论记录
+- 更新缓存
+- 返回新创建的评论信息
+
+#### 4.3 点赞/取消点赞
+- 检查评论是否存在
+- 处理点赞状态变化
+- 更新Redis缓存
+- 返回最新的点赞状态和数量
+
+#### 4.4 删除评论
+- 验证用户权限
+- 删除评论记录（级联删除回复）
+- 清理相关缓存
+
+### 5. 缓存策略
+- 使用Redis缓存评论列表
+- 缓存点赞状态和点赞数量
+- 评论创建、删除时更新缓存
+- 点赞操作实时更新缓存
+
+### 6. 安全考虑
+- 记录评论者IP和User-Agent
+- 防止XSS攻击（内容过滤）
+- 用户权限验证
+- 防止恶意刷评论
