@@ -1,11 +1,11 @@
-import rateLimit from 'express-rate-limit';
-import { config } from '../core/config.js';
+const rateLimit = require('express-rate-limit');
+const { config } = require('../core/config.js');
 
 /**
  * 通用限流中间件
  * 限制每个IP在指定时间窗口内的请求次数
  */
-export const apiLimiter = rateLimit({
+const apiLimiter = rateLimit({
   windowMs: config.rateLimit.windowMs,
   max: config.rateLimit.max,
   standardHeaders: true,
@@ -20,7 +20,7 @@ export const apiLimiter = rateLimit({
  * 登录接口限流
  * 更严格的限制，防止暴力破解
  */
-export const loginLimiter = rateLimit({
+const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分钟
   max: 5, // 每IP最多5次登录尝试
   standardHeaders: true,
@@ -35,7 +35,7 @@ export const loginLimiter = rateLimit({
  * 注册接口限流
  * 限制注册频率
  */
-export const registerLimiter = rateLimit({
+const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1小时
   max: 3, // 每IP最多注册3个账号
   standardHeaders: true,
@@ -50,7 +50,7 @@ export const registerLimiter = rateLimit({
  * 验证码接口限流
  * 防止验证码轰炸
  */
-export const verifyCodeLimiter = rateLimit({
+const verifyCodeLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1小时
   max: 5, // 每IP每小时最多发送5次验证码
   standardHeaders: true,
@@ -68,7 +68,7 @@ export const verifyCodeLimiter = rateLimit({
  * @param {number} options.max - 最大请求数
  * @param {string} options.message - 限流消息
  */
-export const createLimiter = (options) => {
+const createLimiter = (options) => {
   return rateLimit({
     windowMs: options.windowMs || 60 * 1000,
     max: options.max || 10,
@@ -79,4 +79,12 @@ export const createLimiter = (options) => {
       message: options.message || 'Too many requests, please try again later'
     }
   });
+};
+
+module.exports = {
+  apiLimiter,
+  loginLimiter,
+  registerLimiter,
+  verifyCodeLimiter,
+  createLimiter
 };

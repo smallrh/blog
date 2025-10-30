@@ -1,11 +1,11 @@
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import { config } from '../core/config.js';
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const config = require('../core/config.js').config;
 
 /**
  * 密码加密工具
  */
-export const passwordUtil = {
+const passwordUtil = {
   /**
    * 加密密码
    * @param {string} password - 原始密码
@@ -30,7 +30,7 @@ export const passwordUtil = {
 /**
  * JWT工具
  */
-export const jwtUtil = {
+const jwtUtil = {
   /**
    * 生成JWT token
    * @param {Object} payload - JWT载荷
@@ -103,7 +103,7 @@ export const jwtUtil = {
  * @param {number} length - 验证码长度
  * @returns {string} 随机验证码
  */
-export const generateVerificationCode = (length = 6) => {
+const generateVerificationCode = (length = 6) => {
   const chars = '0123456789';
   let code = '';
   for (let i = 0; i < length; i++) {
@@ -117,11 +117,18 @@ export const generateVerificationCode = (length = 6) => {
  * @param {number} length - 字符串长度
  * @returns {string} 随机字符串
  */
-export const generateRandomString = (length = 32) => {
+const generateRandomString = (length = 32) => {
   const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   let result = '';
   for (let i = 0; i < length; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
+};
+
+module.exports = {
+  passwordUtil,
+  jwtUtil,
+  generateVerificationCode,
+  generateRandomString
 };

@@ -1,7 +1,7 @@
 /**
  * 分页工具
  */
-export const paginationUtil = {
+const paginationUtil = {
   /**
    * 解析分页参数
    * @param {Object} query - 请求查询参数
@@ -114,7 +114,7 @@ export const paginationUtil = {
 /**
  * 排序工具
  */
-export const sortUtil = {
+const sortUtil = {
   /**
    * 解析排序参数
    * @param {string} sortBy - 排序字段
@@ -156,4 +156,9 @@ export const sortUtil = {
       [field]: order
     };
   }
+};
+
+module.exports = {
+  paginationUtil,
+  sortUtil
 };

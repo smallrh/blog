@@ -1,10 +1,10 @@
-import validator from 'validator';
-import { errorResponse } from '../core/response.js';
+const validator = require('validator');
+const { errorResponse } = require('../core/response.js');
 
 /**
  * 请求参数验证器
  */
-export const requestValidator = {
+const requestValidator = {
   // 登录验证
   login: {
     account: { required: true, email: true, message: '请输入有效的邮箱' },
@@ -191,7 +191,7 @@ function createValidatorMiddleware(type) {
 /**
  * 验证器对象
  */
-export const validate = {
+const validate = {
   // 各种验证中间件
   login: createValidatorMiddleware('login'),
   register: createValidatorMiddleware('register'),
@@ -203,4 +203,5 @@ export const validate = {
   ...validateMethods
 };
 
-export default validate;
+module.exports = validate;
+module.exports.default = validate;

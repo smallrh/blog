@@ -1,15 +1,9 @@
-const { getRepository } = require('typeorm');
-const CommentEntity = require('../models/comment.entity');
 const { redis } = require('../core/redis');
+const CommentRepository = require('../repositories/comment.repository');
 
 class CommentService {
   constructor() {
-    // 不在构造函数中获取仓库，避免连接问题
-  }
-
-  // 获取评论仓库
-  getCommentRepository() {
-    return getRepository(CommentEntity);
+    this.commentRepository = new CommentRepository();
   }
 
   /**
@@ -22,28 +16,12 @@ class CommentService {
    */
   async getCommentsByPostId(postId, page = 1, pageSize = 20, userId = null) {
     try {
-      const commentRepository = this.getCommentRepository();
-      
-      // 计算分页
-      const skip = (page - 1) * pageSize;
-      
-      // 先查询顶级评论数量（parent_id为null或0的评论）
-      const total = await commentRepository.count({
-        where: { post_id: postId, parent_id: null, status: 1 }
-      });
-      
-      // 查询顶级评论
-      const topComments = await commentRepository.find({
-        where: { post_id: postId, parent_id: null, status: 1 },
-        skip,
-        take: pageSize,
-        order: { created_at: 'DESC' },
-        relations: ['user']
-      });
+      // 使用repository获取评论列表
+      const result = await this.commentRepository.findCommentsByPostId(postId, page, pageSize);
       
       // 构建评论树
       const commentTree = [];
-      for (const comment of topComments) {
+      for (const comment of result.list) {
         // 查询子评论
         const children = await this.getCommentChildren(comment.id, userId);
         
@@ -54,10 +32,10 @@ class CommentService {
       
       return {
         list: commentTree,
-        count: total,
+        count: result.count,
         page,
         pageSize,
-        totalPages: Math.ceil(total / pageSize)
+        totalPages: result.totalPages
       };
     } catch (error) {
       console.error('获取文章评论失败:', error);
@@ -72,13 +50,8 @@ class CommentService {
    * @returns {Promise<Array>} 子评论列表
    */
   async getCommentChildren(parentId, userId = null) {
-    const commentRepository = this.getCommentRepository();
-    
-    const children = await commentRepository.find({
-      where: { parent_id: parentId, status: 1 },
-      order: { created_at: 'ASC' },
-      relations: ['user']
-    });
+    // 使用repository获取子评论
+    const children = await this.commentRepository.findChildrenByParentId(parentId);
     
     // 递归处理子评论
     const formattedChildren = [];
@@ -101,10 +74,8 @@ class CommentService {
    */
   async createComment(commentData, userInfo, requestInfo = {}) {
     try {
-      const commentRepository = this.getCommentRepository();
-      
       // 构建评论对象
-      const newComment = commentRepository.create({
+      const comment = {
         content: commentData.content,
         parent_id: commentData.parent_id || null,
         user_id: userInfo.id,
@@ -112,18 +83,15 @@ class CommentService {
         user_agent: requestInfo.userAgent || null,
         ip_address: requestInfo.ip || null,
         status: 1 // 默认审核通过
-      });
+      };
       
       // 保存评论
-      const savedComment = await commentRepository.save(newComment);
+      const savedComment = await this.commentRepository.create(comment);
       
       // 清除缓存
       await this.clearPostCommentsCache(commentData.post_id);
       
-      return this.formatComment(await commentRepository.findOne({
-        where: { id: savedComment.id },
-        relations: ['user']
-      }));
+      return this.formatComment(savedComment);
     } catch (error) {
       console.error('创建评论失败:', error);
       throw error;
@@ -205,12 +173,8 @@ class CommentService {
    */
   async deleteComment(commentId, userId) {
     try {
-      const commentRepository = this.getCommentRepository();
-      
       // 查找评论
-      const comment = await commentRepository.findOne({
-        where: { id: commentId }
-      });
+      const comment = await this.commentRepository.findById(commentId);
       
       if (!comment) {
         throw new Error('评论不存在');
@@ -222,8 +186,7 @@ class CommentService {
       }
       
       // 标记为已删除（软删除）
-      comment.status = 0;
-      await commentRepository.save(comment);
+      await this.commentRepository.update(commentId, { status: 0 });
       
       // 清除相关缓存
       await this.clearPostCommentsCache(comment.post_id);
@@ -265,8 +228,7 @@ class CommentService {
    */
   async updateCommentLikeCount(commentId, likeCount) {
     try {
-      const commentRepository = this.getCommentRepository();
-      await commentRepository.update(commentId, { like_count: likeCount });
+      await this.commentRepository.update(commentId, { like_count: likeCount });
     } catch (error) {
       console.error('更新评论点赞数失败:', error);
     }
@@ -295,10 +257,7 @@ class CommentService {
    * @returns {Promise<Object|null>} 评论对象或null
    */
   async getCommentById(commentId) {
-    const commentRepository = this.getCommentRepository();
-    return await commentRepository.findOne({
-      where: { id: commentId, status: 1 }
-    });
+    return await this.commentRepository.findById(commentId);
   }
 }
 

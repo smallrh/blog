@@ -7,8 +7,8 @@ const AppDataSource = new DataSource({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT) || 3306,
   username: process.env.DB_USERNAME || 'root',
-  password: process.env.DB_PASSWORD || 'password',
-  database: process.env.DB_NAME || 'blog_backend',
+  password: process.env.DB_PASSWORD || '1234',
+  database: process.env.DB_NAME || 'blog_db',
   entities: ['src/models/*.entity.js'],
   synchronize: false, // 使用SQL文件中的表定义，不自动同步
   logging: false,

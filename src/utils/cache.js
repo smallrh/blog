@@ -1,11 +1,11 @@
-import { redis } from '../core/redis.js';
-import { log } from '../core/logger.js';
+const { redis } = require('../core/redis');
+const { log } = require('../core/logger');
 
 /**
  * 缓存工具
  * 提供自动缓存和缓存失效控制
  */
-export const cacheUtil = {
+const cacheUtil = {
   /**
    * 生成缓存键
    * @param {string} prefix - 缓存键前缀
@@ -180,7 +180,7 @@ export const cacheUtil = {
 /**
  * 缓存键生成器
  */
-export const cacheKeys = {
+const cacheKeys = {
   // 用户相关缓存键
   user(id) {
     return cacheUtil.createKey('user', id);
@@ -224,4 +224,25 @@ export const cacheKeys = {
   tokenBlacklist(token) {
     return `token:blacklist:${token}`;
   }
+};
+
+// 导出单独的函数以便直接使用
+async function cacheGet(key) {
+  return await cacheUtil.get(key);
+}
+
+async function cacheSet(key, value, ttl) {
+  return await cacheUtil.set(key, value, ttl);
+}
+
+async function cacheDel(key) {
+  return await cacheUtil.del(key);
+}
+
+module.exports = {
+  cacheUtil,
+  cacheKeys,
+  cacheGet,
+  cacheSet,
+  cacheDel
 };

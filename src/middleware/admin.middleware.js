@@ -1,4 +1,4 @@
-import { forbiddenResponse } from '../core/response.js';
+const { forbiddenResponse } = require('../core/response');
 
 /**
  * 管理员权限中间件
@@ -7,7 +7,7 @@ import { forbiddenResponse } from '../core/response.js';
  * @param {Object} res - Express响应对象
  * @param {Function} next - 下一个中间件函数
  */
-export const adminMiddleware = (req, res, next) => {
+const adminMiddleware = (req, res, next) => {
   // 确保用户已通过认证
   if (!req.user) {
     return res.status(401).json({
@@ -39,7 +39,7 @@ export const adminMiddleware = (req, res, next) => {
  * 超级管理员中间件
  * 检查用户是否为超级管理员角色
  */
-export const superAdminMiddleware = (req, res, next) => {
+const superAdminMiddleware = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({
       code: 401,
@@ -59,7 +59,7 @@ export const superAdminMiddleware = (req, res, next) => {
  * 确保用户只能操作自己的资源
  * @param {Function} checkOwnership - 验证所有权的函数
  */
-export const ownershipMiddleware = (checkOwnership) => {
+const ownershipMiddleware = (checkOwnership) => {
   return async (req, res, next) => {
     if (!req.user) {
       return res.status(401).json({
@@ -87,3 +87,5 @@ export const ownershipMiddleware = (checkOwnership) => {
     }
   };
 };
+
+module.exports = { adminMiddleware, superAdminMiddleware, ownershipMiddleware };

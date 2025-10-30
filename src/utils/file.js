@@ -1,13 +1,13 @@
-import fs from 'fs';
-import path from 'path';
-import { logger } from '../core/logger.js';
+const fs = require('fs');
+const path = require('path');
+const { log } = require('../core/logger');
 
 /**
  * 创建目录
  * @param {string} dirPath - 目录路径
  * @returns {Promise<void>}
  */
-export async function createDir(dirPath) {
+const createDir = async function(dirPath) {
   try {
     // 转换为绝对路径
     const absolutePath = path.isAbsolute(dirPath) ? dirPath : path.resolve(process.cwd(), dirPath);
@@ -16,10 +16,10 @@ export async function createDir(dirPath) {
     if (!fs.existsSync(absolutePath)) {
       // 创建目录（包括父目录）
       fs.mkdirSync(absolutePath, { recursive: true });
-      logger.info(`Directory created: ${absolutePath}`);
+      log.info(`Directory created: ${absolutePath}`);
     }
   } catch (error) {
-    logger.error(`Failed to create directory ${dirPath}:`, error);
+    log.error(`Failed to create directory ${dirPath}:`, error);
     throw error;
   }
 }
@@ -29,11 +29,11 @@ export async function createDir(dirPath) {
  * @param {string} filePath - 文件路径
  * @returns {boolean}
  */
-export function fileExists(filePath) {
+const fileExists = function(filePath) {
   try {
     return fs.existsSync(filePath);
   } catch (error) {
-    logger.error(`Failed to check file existence: ${filePath}`, error);
+    log.error(`Failed to check file existence: ${filePath}`, error);
     return false;
   }
 }
@@ -43,14 +43,14 @@ export function fileExists(filePath) {
  * @param {string} filePath - 文件路径
  * @returns {Promise<void>}
  */
-export async function deleteFile(filePath) {
+const deleteFile = async function(filePath) {
   try {
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
-      logger.info(`File deleted: ${filePath}`);
+      log.info(`File deleted: ${filePath}`);
     }
   } catch (error) {
-    logger.error(`Failed to delete file ${filePath}:`, error);
+    log.error(`Failed to delete file ${filePath}:`, error);
     throw error;
   }
 }
@@ -60,11 +60,11 @@ export async function deleteFile(filePath) {
  * @param {string} filePath - 文件路径
  * @returns {Promise<fs.Stats>}
  */
-export async function getFileInfo(filePath) {
+const getFileInfo = async function(filePath) {
   try {
     return fs.statSync(filePath);
   } catch (error) {
-    logger.error(`Failed to get file info ${filePath}:`, error);
+    log.error(`Failed to get file info ${filePath}:`, error);
     throw error;
   }
 }
@@ -74,7 +74,7 @@ export async function getFileInfo(filePath) {
  * @param {string} originalName - 原始文件名
  * @returns {string}
  */
-export function generateUniqueFileName(originalName) {
+const generateUniqueFileName = function(originalName) {
   const timestamp = Date.now();
   const random = Math.floor(Math.random() * 1000);
   const ext = path.extname(originalName);
@@ -88,7 +88,7 @@ export function generateUniqueFileName(originalName) {
  * @param {string} fileName - 文件名
  * @returns {string}
  */
-export function getFileExtension(fileName) {
+const getFileExtension = function(fileName) {
   return path.extname(fileName).toLowerCase();
 }
 
@@ -98,7 +98,7 @@ export function getFileExtension(fileName) {
  * @param {string[]} allowedTypes - 允许的文件类型列表
  * @returns {boolean}
  */
-export function validateFileType(fileName, allowedTypes) {
+const validateFileType = function(fileName, allowedTypes) {
   const ext = getFileExtension(fileName);
   return allowedTypes.includes(ext);
 }
@@ -108,13 +108,24 @@ export function validateFileType(fileName, allowedTypes) {
  * @param {string} dirPath - 目录路径
  * @returns {string[]}
  */
-export function getFilesInDirectory(dirPath) {
+const getFilesInDirectory = function(dirPath) {
   try {
     return fs.readdirSync(dirPath).filter(file => 
       fs.statSync(path.join(dirPath, file)).isFile()
     );
   } catch (error) {
-    logger.error(`Failed to read directory ${dirPath}:`, error);
+    log.error(`Failed to read directory ${dirPath}:`, error);
     return [];
   }
-}
+};
+
+module.exports = {
+  createDir,
+  fileExists,
+  deleteFile,
+  getFileInfo,
+  generateUniqueFileName,
+  getFileExtension,
+  validateFileType,
+  getFilesInDirectory
+};

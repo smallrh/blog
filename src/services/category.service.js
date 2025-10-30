@@ -1,22 +1,11 @@
-const { getRepository } = require('typeorm');
-const CategoryEntity = require('../models/category.entity');
-const PostEntity = require('../models/post.entity');
+const CategoryRepository = require('../repositories/category.repository');
 const { redis } = require('../core/redis');
 const { config } = require('../core/config');
+const { cacheGet, cacheSet, cacheDel } = require('../utils/cache');
 
 class CategoryService {
   constructor() {
-    // 暂时不在构造函数中获取仓库，避免连接问题
-  }
-  
-  // 获取分类仓库
-  getCategoryRepository() {
-    return getRepository(CategoryEntity);
-  }
-  
-  // 获取文章仓库
-  getPostRepository() {
-    return getRepository(PostEntity);
+    this.categoryRepository = new CategoryRepository();
   }
 
   /**
@@ -27,22 +16,19 @@ class CategoryService {
     try {
       // 尝试从缓存获取
       const cacheKey = 'category:tree';
-      const cachedData = await redis.get(cacheKey);
+      const cachedData = await cacheGet(cacheKey);
       if (cachedData) {
         return JSON.parse(cachedData);
       }
 
       // 获取所有分类
-      const categories = await this.getCategoryRepository().find({
-        where: { status: 1 },
-        order: { sort_order: 'ASC', created_at: 'DESC' }
-      });
+      const categories = await this.categoryRepository.findAllForTree();
 
       // 构建分类树
       const tree = this._buildCategoryTree(categories);
 
       // 设置缓存（10分钟）
-      await redis.setex(cacheKey, 600, JSON.stringify(tree));
+      await cacheSet(cacheKey, JSON.stringify(tree), 600);
 
       return tree;
     } catch (error) {
@@ -61,31 +47,33 @@ class CategoryService {
    */
   async getCategories({ parent_id = null, page = 1, pageSize = 20 }) {
     try {
-      // 构建查询条件
-      const where = { status: 1 };
-      if (parent_id !== null) {
-        where.parent_id = parent_id;
+      // 尝试从缓存获取
+      const cacheKey = `category:list:${parent_id || 'all'}:${page}:${pageSize}`;
+      const cachedData = await cacheGet(cacheKey);
+      if (cachedData) {
+        return JSON.parse(cachedData);
       }
 
-      // 查询总数
-      const count = await this.getCategoryRepository().count({ where });
-      
       // 计算分页
       const skip = (page - 1) * pageSize;
-      const categories = await this.getCategoryRepository().find({
-        where,
+      const { list: categories, count } = await this.categoryRepository.findWithPagination({
+        parent_id,
         skip,
-        take: pageSize,
-        order: { sort_order: 'ASC', created_at: 'DESC' }
+        take: pageSize
       });
 
-      return {
+      const result = {
         list: categories,
         count,
         page,
         pageSize,
         totalPages: Math.ceil(count / pageSize)
       };
+
+      // 设置缓存（5分钟）
+      await cacheSet(cacheKey, JSON.stringify(result), 300);
+
+      return result;
     } catch (error) {
       console.error('获取分类列表失败:', error);
       throw error;
@@ -101,23 +89,21 @@ class CategoryService {
     try {
       // 尝试从缓存获取
       const cacheKey = `category:slug:${slug}`;
-      const cachedData = await redis.get(cacheKey);
+      const cachedData = await cacheGet(cacheKey);
       if (cachedData) {
         return JSON.parse(cachedData);
       }
 
-      const category = await this.getCategoryRepository().findOne({
-        where: { slug, status: 1 }
-      });
+      const category = await this.categoryRepository.findBySlug(slug);
 
       if (category) {
-        // 设置缓存（10分钟）
-        await redis.setex(cacheKey, 600, JSON.stringify(category));
+        // 设置缓存（5分钟）
+        await cacheSet(cacheKey, JSON.stringify(category), 300);
       }
 
       return category;
     } catch (error) {
-      console.error('通过slug获取分类失败:', error);
+      console.error('通过slug获取分类详情失败:', error);
       throw error;
     }
   }
@@ -139,7 +125,7 @@ class CategoryService {
 
       // 构建缓存键
       const cacheKey = `category:posts:${slug}:${page}:${pageSize}`;
-      const cachedData = await redis.get(cacheKey);
+      const cachedData = await cacheGet(cacheKey);
       if (cachedData) {
         return {
           ...JSON.parse(cachedData),
@@ -190,7 +176,7 @@ class CategoryService {
       };
 
       // 设置缓存（5分钟）
-      await redis.setex(cacheKey, 300, JSON.stringify(result));
+      await cacheSet(cacheKey, JSON.stringify(result), 300);
 
       return {
         ...result,
@@ -236,24 +222,139 @@ class CategoryService {
   }
 
   /**
+   * 创建分类
+   * @param {Object} categoryData 分类数据
+   * @returns {Promise<Object>} 创建的分类
+   */
+  async createCategory(categoryData) {
+    try {
+      // 检查slug是否已存在
+      const existingCategory = await this.categoryRepository.findBySlug(categoryData.slug);
+      
+      if (existingCategory) {
+        throw new Error('分类别名已存在');
+      }
+      
+      // 创建分类
+      const category = {
+        name: categoryData.name,
+        slug: categoryData.slug,
+        description: categoryData.description || '',
+        parent_id: categoryData.parent_id || null,
+        sort_order: categoryData.sort_order || 0,
+        status: categoryData.status !== undefined ? categoryData.status : 1
+      };
+      
+      const createdCategory = await this.categoryRepository.create(category);
+      
+      // 清除缓存
+      await this.clearCache();
+      
+      return createdCategory;
+    } catch (error) {
+      console.error('创建分类失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新分类
+   * @param {number} id 分类ID
+   * @param {Object} categoryData 分类数据
+   * @returns {Promise<Object>} 更新后的分类
+   */
+  async updateCategory(id, categoryData) {
+    try {
+      // 检查分类是否存在
+      const category = await this.categoryRepository.findById(id);
+      
+      if (!category) {
+        throw new Error('分类不存在');
+      }
+      
+      // 检查slug是否与其他分类重复
+      if (categoryData.slug && categoryData.slug !== category.slug) {
+        const existingCategory = await this.categoryRepository.findBySlug(categoryData.slug);
+        
+        if (existingCategory) {
+          throw new Error('分类别名已存在');
+        }
+      }
+      
+      // 更新分类
+      const updatedCategory = await this.categoryRepository.update(id, categoryData);
+      
+      // 清除缓存
+      await this.clearCache();
+      
+      return updatedCategory;
+    } catch (error) {
+      console.error('更新分类失败:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 清除分类相关缓存
    * @param {string} type 缓存类型
    * @param {string} key 缓存键
    */
   async clearCache(type = 'all', key = '') {
     try {
-      if (type === 'all') {
-        // 清除所有分类相关缓存
-        const keys = await redis.keys('category:*');
-        if (keys.length > 0) {
-          await redis.del(keys);
-        }
+      if (type === 'slug') {
+        // 清除特定slug的分类缓存
+        await cacheDel(`category:slug:${key}`);
+      } else if (type === 'id') {
+        // 清除特定ID的分类缓存
+        await cacheDel(`category:id:${key}`);
       } else {
-        // 清除特定缓存
-        await redis.del(`category:${type}:${key}`);
+        // 清除所有分类缓存
+        // 由于redisTools.js中没有cacheDelPattern方法，这里简单实现清除几个关键缓存
+        // 直接使用redis实例删除所有匹配的键
+         const keys = await redis.keys('category:*');
+         if (keys.length > 0) {
+           await redis.del(keys);
+         }
       }
     } catch (error) {
       console.error('清除分类缓存失败:', error);
+    }
+  }
+  
+  /**
+   * 删除分类
+   * @param {number} id 分类ID
+   * @returns {Promise<void>}
+   */
+  async deleteCategory(id) {
+    try {
+      // 检查分类是否存在
+      const category = await this.categoryRepository.findById(id);
+      
+      if (!category) {
+        throw new Error('分类不存在');
+      }
+      
+      // 检查是否有子分类
+      const hasChildren = await this.categoryRepository.hasChildren(id);
+      
+      if (hasChildren) {
+        throw new Error('该分类下有子分类，无法删除');
+      }
+      
+      // 检查是否有文章
+      if (category.post_count > 0) {
+        throw new Error('该分类下有文章，无法删除');
+      }
+      
+      // 删除分类
+      await this.categoryRepository.delete(id);
+      
+      // 清除缓存
+      await this.clearCache();
+    } catch (error) {
+      console.error('删除分类失败:', error);
+      throw error;
     }
   }
 }

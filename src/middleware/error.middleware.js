@@ -1,5 +1,5 @@
-import { log } from '../core/logger.js';
-import { serverErrorResponse, errorResponse, notFoundResponse } from '../core/response.js';
+const { log } = require('../core/logger');
+const { serverErrorResponse, errorResponse, notFoundResponse } = require('../core/response');
 
 /**
  * 错误处理中间件
@@ -9,7 +9,7 @@ import { serverErrorResponse, errorResponse, notFoundResponse } from '../core/re
  * @param {Object} res - Express响应对象
  * @param {Function} next - 下一个中间件函数
  */
-export const errorHandler = (err, req, res, next) => {
+const errorHandler = (err, req, res, next) => {
   // 记录错误日志
   log.error('Unhandled error', err);
 
@@ -41,7 +41,7 @@ export const errorHandler = (err, req, res, next) => {
  * 404错误处理中间件
  * 捕获所有未匹配的路由
  */
-export const notFoundHandler = (req, res, next) => {
+const notFoundHandler = (req, res, next) => {
   return notFoundResponse(res, 'API endpoint not found');
 };
 
@@ -49,7 +49,7 @@ export const notFoundHandler = (req, res, next) => {
  * 日志记录中间件
  * 记录请求信息
  */
-export const loggerMiddleware = (req, res, next) => {
+const loggerMiddleware = (req, res, next) => {
   const startTime = Date.now();
 
   // 记录请求开始
@@ -77,7 +77,7 @@ export const loggerMiddleware = (req, res, next) => {
  * 跨域中间件
  * 设置CORS头
  */
-export const corsMiddleware = (req, res, next) => {
+const corsMiddleware = (req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -89,4 +89,11 @@ export const corsMiddleware = (req, res, next) => {
   }
 
   next();
+};
+
+module.exports = {
+  errorHandler,
+  notFoundHandler,
+  loggerMiddleware,
+  corsMiddleware
 };

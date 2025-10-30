@@ -1,8 +1,14 @@
-const database = require('../core/database');
+const PostRepository = require('../repositories/post.repository');
+const TagRepository = require('../repositories/tag.repository');
 const redis = require('../core/redis');
 const { paginationUtil } = require('../utils/pagination');
+const { cacheGet, cacheSet, cacheDel } = require('../utils/cache');
 
 class PostService {
+  constructor() {
+    this.postRepository = new PostRepository();
+    this.tagRepository = new TagRepository();
+  }
   /**
    * 获取文章列表
    * @param {number} page - 页码
@@ -10,182 +16,94 @@ class PostService {
    * @param {object} filters - 筛选条件
    * @returns {Promise<{list: Array, pagination: object}>}
    */
-  static async getPosts(page = 1, pageSize = 10, filters = {}) {
+  async getPosts(page = 1, pageSize = 10, filters = {}) {
     try {
+      // 尝试从缓存获取
+      const cacheKey = `post:list:${page}:${pageSize}:${JSON.stringify(filters)}`;
+      const cachedData = await cacheGet(cacheKey);
+      if (cachedData) {
+        return JSON.parse(cachedData);
+      }
+
       const { offset, limit } = paginationUtil.calculatePagination(page, pageSize);
-      const params = [];
-      let whereClause = 'p.status = 1';
-      let joinClause = '';
+      const { list: posts, total } = await this.postRepository.findWithFilters(offset, limit, filters);
 
-      // 添加筛选条件
-      if (filters.categoryId) {
-        joinClause += ' JOIN post_category pc ON p.id = pc.post_id';
-        whereClause += ' AND pc.category_id = ?';
-        params.push(filters.categoryId);
-      }
-
-      if (filters.tagId) {
-        joinClause += ' JOIN post_tag pt ON p.id = pt.post_id';
-        whereClause += ' AND pt.tag_id = ?';
-        params.push(filters.tagId);
-      }
-
-      if (filters.search) {
-        whereClause += ' AND (p.title LIKE ? OR p.content LIKE ?)';
-        params.push(`%${filters.search}%`, `%${filters.search}%`);
-      }
-
-      // 查询总数
-      const countQuery = `
-        SELECT COUNT(DISTINCT p.id) as total 
-        FROM posts p
-        ${joinClause}
-        WHERE ${whereClause}
-      `;
-      const [countResult] = await database.query(countQuery, params);
-      const total = countResult[0].total;
-
-      // 查询文章列表
-      const query = `
-        SELECT 
-          p.id, p.title, p.slug, p.excerpt, p.cover, p.view_count, p.like_count,
-          c.id as category_id, c.name as category_name,
-          u.id as user_id, u.username as user_name, u.avatar as user_avatar,
-          p.created_at
-        FROM posts p
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN users u ON p.user_id = u.id
-        ${joinClause}
-        WHERE ${whereClause}
-        GROUP BY p.id
-        ORDER BY p.created_at DESC
-        LIMIT ? OFFSET ?
-      `;
-      
-      params.push(limit, offset);
-      const [posts] = await database.query(query, params);
-
-      // 获取每个文章的标签
-      const postIds = posts.map(post => post.id);
-      const tagsQuery = `
-        SELECT pt.post_id, t.id, t.name 
-        FROM post_tag pt 
-        JOIN tags t ON pt.tag_id = t.id 
-        WHERE pt.post_id IN (?)`;
-      
-      const [tagsResult] = await database.query(tagsQuery, [postIds]);
-      const tagsMap = {};
-      
-      tagsResult.forEach(tag => {
-        if (!tagsMap[tag.post_id]) {
-          tagsMap[tag.post_id] = [];
+      const result = {
+        list: formattedPosts,
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize)
         }
-        tagsMap[tag.post_id].push({ id: tag.id, name: tag.name });
-      });
-
-      // 组装结果
-      const list = posts.map(post => ({
-        id: post.id,
-        title: post.title,
-        slug: post.slug,
-        excerpt: post.excerpt,
-        cover: post.cover,
-        view_count: post.view_count,
-        like_count: post.like_count,
-        category: post.category_id ? {
-          id: post.category_id,
-          name: post.category_name
-        } : null,
-        tags: tagsMap[post.id] || [],
-        user: {
-          id: post.user_id,
-          name: post.user_name,
-          avatar: post.user_avatar
-        },
-        created_at: post.created_at
-      }));
-
-      return {
-        list,
-        pagination: paginationUtil.generatePagination(page, pageSize, total)
       };
+
+      // 设置缓存（300秒）
+      await cacheSet(cacheKey, JSON.stringify(result), 300);
+
+      return result;
     } catch (error) {
-      console.error('Get posts error:', error);
-      throw new Error('获取文章列表失败');
+      console.error('获取文章列表失败:', error);
+      throw error;
     }
   }
 
   /**
    * 获取文章详情
-   * @param {string|number} identifier - 文章ID或slug
-   * @returns {Promise<object>}
+   * @param {number} id - 文章ID
+   * @returns {Promise<Object>}
    */
-  static async getPostDetail(identifier) {
+  async getPostById(id) {
     try {
-      const isSlug = isNaN(identifier);
-      const query = `
-        SELECT 
-          p.id, p.title, p.slug, p.content, p.cover, p.view_count, p.like_count,
-          (SELECT COUNT(*) FROM comments WHERE post_id = p.id AND parent_id IS NULL) as comment_count,
-          c.id as category_id, c.name as category_name, c.slug as category_slug,
-          u.id as user_id, u.username as user_name, u.avatar as user_avatar,
-          p.created_at, p.updated_at
-        FROM posts p
-        LEFT JOIN categories c ON p.category_id = c.id
-        LEFT JOIN users u ON p.user_id = u.id
-        WHERE p.status = 1 AND ${isSlug ? 'p.slug = ?' : 'p.id = ?'}
-      `;
-      
-      const [posts] = await database.query(query, [identifier]);
-      
-      if (!posts || posts.length === 0) {
+      // 尝试从缓存获取
+      const cacheKey = `post:detail:id:${id}`;
+      const cachedPost = await cacheGet(cacheKey);
+      if (cachedPost) {
+        return JSON.parse(cachedPost);
+      }
+
+      const post = await this.postRepository.findById(id);
+      if (!post) {
         return null;
       }
 
-      const post = posts[0];
-
-      // 获取文章标签
-      const tagsQuery = `
-        SELECT t.id, t.name, t.slug 
-        FROM post_tag pt 
-        JOIN tags t ON pt.tag_id = t.id 
-        WHERE pt.post_id = ?`;
-      
-      const [tags] = await database.query(tagsQuery, [post.id]);
-
-      // 增加浏览量
-      await database.query('UPDATE posts SET view_count = view_count + 1 WHERE id = ?', [post.id]);
-
-      return {
+      const postDetail = {
         id: post.id,
         title: post.title,
         slug: post.slug,
+        excerpt: post.excerpt,
         content: post.content,
         cover: post.cover,
-        view_count: post.view_count + 1, // 返回增加后的值
+        view_count: post.view_count,
         like_count: post.like_count,
-        comment_count: post.comment_count,
-        category: post.category_id ? {
-          id: post.category_id,
-          name: post.category_name,
-          slug: post.category_slug
+        is_top: post.is_top,
+        is_hot: post.is_hot,
+        created_at: post.created_at,
+        updated_at: post.updated_at,
+        category: post.category ? {
+          id: post.category.id,
+          name: post.category.name,
+          slug: post.category.slug
         } : null,
-        tags: tags.map(tag => ({
+        tags: post.tags ? post.tags.map(tag => ({
           id: tag.id,
           name: tag.name,
           slug: tag.slug
-        })),
-        user: {
-          id: post.user_id,
-          name: post.user_name,
-          avatar: post.user_avatar
-        },
-        created_at: post.created_at,
-        updated_at: post.updated_at
+        })) : [],
+        user: post.user ? {
+          id: post.user.id,
+          name: post.user.name,
+          avatar: post.user.avatar
+        } : null
       };
+
+      // 设置缓存（10分钟）
+      await cacheSet(cacheKey, JSON.stringify(postDetail), 600);
+
+      return postDetail;
     } catch (error) {
-      console.error('Get post detail error:', error);
-      throw new Error('获取文章详情失败');
+      console.error('获取文章详情失败:', error);
+      throw error;
     }
   }
 
@@ -369,6 +287,103 @@ class PostService {
     } catch (error) {
       console.error('Collect post error:', error);
       throw new Error(error.message || '收藏操作失败');
+    }
+  }
+
+  /**
+   * 获取文章详情（通过slug）
+   * @param {string} slug - 文章别名
+   * @returns {Promise<Object>}
+   */
+  async getPostBySlug(slug) {
+    try {
+      // 尝试从缓存获取
+      const cacheKey = `post:detail:slug:${slug}`;
+      const cachedPost = await cacheGet(cacheKey);
+      if (cachedPost) {
+        return JSON.parse(cachedPost);
+      }
+
+      const post = await this.postRepository.findBySlug(slug);
+      if (!post) {
+        return null;
+      }
+
+      const postDetail = {
+        id: post.id,
+        title: post.title,
+        slug: post.slug,
+        excerpt: post.excerpt,
+        content: post.content,
+        cover: post.cover,
+        view_count: post.view_count,
+        like_count: post.like_count,
+        is_top: post.is_top,
+        is_hot: post.is_hot,
+        created_at: post.created_at,
+        updated_at: post.updated_at,
+        category: post.category ? {
+          id: post.category.id,
+          name: post.category.name,
+          slug: post.category.slug
+        } : null,
+        tags: post.tags ? post.tags.map(tag => ({
+          id: tag.id,
+          name: tag.name,
+          slug: tag.slug
+        })) : [],
+        user: post.user ? {
+          id: post.user.id,
+          name: post.user.name,
+          avatar: post.user.avatar
+        } : null
+      };
+
+      // 设置缓存（10分钟）
+      await cacheSet(cacheKey, JSON.stringify(postDetail), 600);
+
+      return postDetail;
+    } catch (error) {
+      console.error('获取文章详情失败:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 增加文章浏览量
+   * @param {number} id - 文章ID
+   * @returns {Promise<boolean>}
+   */
+  async incrementViewCount(id) {
+    try {
+      const success = await this.postRepository.incrementViewCount(id);
+      if (success) {
+        // 清除缓存
+        await cacheDel(`post:detail:id:${id}`);
+      }
+      return success;
+    } catch (error) {
+      console.error('增加浏览量失败:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 增加文章点赞数
+   * @param {number} id - 文章ID
+   * @returns {Promise<boolean>}
+   */
+  async incrementLikeCount(id) {
+    try {
+      const success = await this.postRepository.incrementLikeCount(id);
+      if (success) {
+        // 清除缓存
+        await cacheDel(`post:detail:id:${id}`);
+      }
+      return success;
+    } catch (error) {
+      console.error('增加点赞数失败:', error);
+      return false;
     }
   }
 }

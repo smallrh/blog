@@ -5,7 +5,7 @@
  * @param {string} message - 响应消息
  * @param {number} code - 状态码
  */
-export function successResponse(res, data = null, message = 'success', code = 200) {
+function successResponse(res, data = null, message = 'success', code = 200) {
   return res.status(code).json({
     code,
     message,
@@ -20,7 +20,7 @@ export function successResponse(res, data = null, message = 'success', code = 20
  * @param {number} code - 状态码
  * @param {any} errors - 错误详情
  */
-export function errorResponse(res, message = 'error', code = 400, errors = null) {
+function errorResponse(res, message = 'error', code = 400, errors = null) {
   return res.status(code).json({
     code,
     message,
@@ -37,7 +37,7 @@ export function errorResponse(res, message = 'error', code = 400, errors = null)
  * @param {number} pageSize - 每页条数
  * @param {string} message - 响应消息
  */
-export function paginationResponse(
+function paginationResponse(
   res,
   list = [],
   total = 0,
@@ -67,7 +67,7 @@ export function paginationResponse(
  * @param {import('express').Response} res - Express响应对象
  * @param {string} message - 错误消息
  */
-export function unauthorizedResponse(res, message = '未授权访问') {
+function unauthorizedResponse(res, message = '未授权访问') {
   return res.status(401).json({
     code: 401,
     message,
@@ -80,7 +80,7 @@ export function unauthorizedResponse(res, message = '未授权访问') {
  * @param {import('express').Response} res - Express响应对象
  * @param {string} message - 错误消息
  */
-export function forbiddenResponse(res, message = '禁止访问') {
+function forbiddenResponse(res, message = '禁止访问') {
   return res.status(403).json({
     code: 403,
     message,
@@ -93,7 +93,7 @@ export function forbiddenResponse(res, message = '禁止访问') {
  * @param {import('express').Response} res - Express响应对象
  * @param {string} message - 错误消息
  */
-export function notFoundResponse(res, message = '资源不存在') {
+function notFoundResponse(res, message = '资源不存在') {
   return res.status(404).json({
     code: 404,
     message,
@@ -107,7 +107,7 @@ export function notFoundResponse(res, message = '资源不存在') {
  * @param {string} message - 错误消息
  * @param {any} error - 错误详情
  */
-export function serverErrorResponse(res, message = '服务器内部错误', error = null) {
+function serverErrorResponse(res, message = '服务器内部错误', error = null) {
   return res.status(500).json({
     code: 500,
     message,
@@ -121,7 +121,7 @@ export function serverErrorResponse(res, message = '服务器内部错误', erro
  * @param {string} message - 错误消息
  * @param {any} errors - 错误详情
  */
-export function validationErrorResponse(res, message = '参数验证失败', errors = null) {
+function validationErrorResponse(res, message = '参数验证失败', errors = null) {
   return res.status(422).json({
     code: 422,
     message,
@@ -134,7 +134,7 @@ export function validationErrorResponse(res, message = '参数验证失败', err
  * @param {import('express').Response} res - Express响应对象
  * @param {string} message - 响应消息
  */
-export function operationSuccessResponse(res, message = '操作成功') {
+function operationSuccessResponse(res, message = '操作成功') {
   return res.json({
     code: 200,
     message,
@@ -150,7 +150,7 @@ export function operationSuccessResponse(res, message = '操作成功') {
  * @param {Array} failItems - 失败项列表
  * @param {string} message - 响应消息
  */
-export function batchOperationResponse(
+function batchOperationResponse(
   res,
   successCount = 0,
   failCount = 0,
@@ -167,3 +167,16 @@ export function batchOperationResponse(
     }
   });
 }
+
+module.exports = {
+  successResponse,
+  errorResponse,
+  paginationResponse,
+  unauthorizedResponse,
+  forbiddenResponse,
+  notFoundResponse,
+  serverErrorResponse,
+  validationErrorResponse,
+  operationSuccessResponse,
+  batchOperationResponse
+};
