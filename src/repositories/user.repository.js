@@ -17,7 +17,7 @@ class UserRepository {
   async findById(id) {
     return this.repo.findOne({
       where: { id },
-      select: ['id', 'email', 'name', 'avatar', 'bio', 'role', 'status', 'createdAt', 'updatedAt']
+      select: ['id', 'username', 'email', 'display_name', 'avatar', 'role', 'status', 'created_at', 'updated_at']
     });
   }
 
@@ -28,7 +28,8 @@ class UserRepository {
    */
   async findByEmail(email) {
     return this.repo.findOne({
-      where: { email }
+      where: { email },
+      select: ['id', 'username', 'email', 'display_name', 'password', 'role', 'status']
     });
   }
 
@@ -86,12 +87,17 @@ class UserRepository {
 
   /**
    * 更新用户最后登录信息
-   * @param {number} id - 用户ID
+   * @param {string} id - 用户ID
    * @param {string} ip - IP地址
    * @returns {Promise<boolean>}
    */
   async updateLastLogin(id, ip) {
-    const result = await this.repo.update({ id }, { last_login_ip: ip });
+    // 根据SQL文件结构，更新最后登录时间和登录次数
+    // 注意：SQL中没有last_login_ip字段，所以不更新IP
+    const result = await this.repo.update({ id }, { 
+      last_login_at: new Date(),
+      login_count: () => "login_count + 1"
+    });
     return result.affected > 0;
   }
 

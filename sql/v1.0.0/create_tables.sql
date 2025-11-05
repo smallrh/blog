@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS settings (
 -- 用户表
 -- 用户表优化
 CREATE TABLE IF NOT EXISTS users (
-    id VARCHAR(50) PRIMARY KEY,
+    id VARCHAR(50) PRIMARY KEY,--使用uuis
     username VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     avatar VARCHAR(255),

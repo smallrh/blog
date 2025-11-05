@@ -2,7 +2,7 @@ const express = require('express');
 const { loginLimiter, registerLimiter, verifyCodeLimiter } = require('../../middleware/limiter.middleware');
 const { authMiddleware } = require('../../middleware/auth.middleware');
 const { successResponse, errorResponse } = require('../../core/response');
-const { requestValidator } = require('../../utils/validator');
+const validate = require('../../utils/validator');
 const AuthService = require('../../services/auth.service');
 
 const router = express.Router();
@@ -29,13 +29,8 @@ const authService = new AuthService();
  *     responses:
  *       200: { description: 'Login successful' }
  */
-router.post('/login', loginLimiter, async (req, res) => {
+router.post('/login', loginLimiter, validate.login, async (req, res) => {
   try {
-    // 验证请求参数
-    const validation = requestValidator.login(req.body);
-    if (!validation.valid) {
-      return errorResponse(res, validation.errors.join(', '));
-    }
 
     // 获取客户端IP
     const ip = req.ip || req.connection.remoteAddress;
@@ -64,23 +59,21 @@ router.post('/login', loginLimiter, async (req, res) => {
  *             required:
  *               - email
  *               - password
- *               - name
+ *               - username
  *               - verify_code
  *             properties:
  *               email: { type: string, description: '邮箱' }
  *               password: { type: string, description: '密码' }
- *               name: { type: string, description: '用户名' }
+ *               username: { type: string, description: '用户名' }
+ *               display_name: { type: string, description: '显示名称', nullable: true }
  *               verify_code: { type: string, description: '验证码' }
  *     responses:
  *       200: { description: 'Registration successful' }
  */
-router.post('/register', registerLimiter, async (req, res) => {
+router.post('/register', registerLimiter, validate.register, async (req, res) => {
   try {
-    // 验证请求参数
-    const validation = requestValidator.register(req.body);
-    if (!validation.valid) {
-      return errorResponse(res, validation.errors.join(', '));
-    }
+    // 先验证验证码
+    await authService.verifyCode(req.body.email, req.body.verify_code, 'register');
 
     // 调用注册服务
     const user = await authService.register(req.body);
@@ -160,13 +153,8 @@ router.get('/me', authMiddleware, async (req, res) => {
  *     responses:
  *       200: { description: 'Verification code sent successfully' }
  */
-router.post('/send-code', verifyCodeLimiter, async (req, res) => {
+router.post('/send-code', verifyCodeLimiter, validate.sendCode, async (req, res) => {
   try {
-    // 验证请求参数
-    const validation = requestValidator.sendCode(req.body);
-    if (!validation.valid) {
-      return errorResponse(res, validation.errors.join(', '));
-    }
 
     // 发送验证码
     await authService.sendVerificationCode(req.body.email, req.body.type);
@@ -200,16 +188,11 @@ router.post('/send-code', verifyCodeLimiter, async (req, res) => {
  *     responses:
  *       200: { description: 'Password reset successfully' }
  */
-router.post('/reset-password', async (req, res) => {
+router.post('/reset-password', validate.resetPassword, async (req, res) => {
   try {
-    // 验证请求参数
-    const validation = requestValidator.resetPassword(req.body);
-    if (!validation.valid) {
-      return errorResponse(res, validation.errors.join(', '));
-    }
 
     // 重置密码
-    const { resetToken } = await authService.verifyCode(req.body.email, req.body.verify_code);
+    const { resetToken } = await authService.verifyCode(req.body.email, req.body.verify_code, 'reset_password');
     await authService.resetPassword(resetToken, req.body.new_password);
     
     return successResponse(res, null, 'Password reset successfully');

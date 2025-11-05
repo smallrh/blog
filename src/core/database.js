@@ -4,14 +4,15 @@ const { DataSource } = require('typeorm');
 // 创建数据库连接池
 const AppDataSource = new DataSource({
   type: 'mysql',
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT) || 3306,
-  username: process.env.DB_USERNAME || 'root',
-  password: process.env.DB_PASSWORD || '1234',
-  database: process.env.DB_NAME || 'blog_db',
+  host: '127.0.0.1',
+  port: 3306,
+  username: 'root',
+  password: '1234',
+  database: 'blog_db',
   entities: ['src/models/*.entity.js'],
   synchronize: false, // 使用SQL文件中的表定义，不自动同步
-  logging: false,
+  logging: false, // 禁用日志
+  entityPrefix: '' // 确保没有表前缀
 });
 
 // 初始化数据库连接

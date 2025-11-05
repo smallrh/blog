@@ -6,12 +6,36 @@ const { log } = require('../core/logger');
 const transporter = nodemailer.createTransport({
   host: configData.email.host,
   port: configData.email.port,
-  secure: configData.email.secure || false,
+  secure: configData.email.port === 465, // 根据端口自动设置secure
   auth: {
     user: configData.email.user,
     pass: configData.email.password
+  },
+  tls: {
+    // 允许无效证书（开发环境）
+    rejectUnauthorized: configData.server.env === 'production'
   }
 });
+
+// 验证邮件传输器连接
+async function verifyTransporter() {
+  try {
+    await transporter.verify();
+    log.info('邮件传输器连接验证成功');
+  } catch (error) {
+    log.error('邮件传输器连接验证失败:', error);
+    log.error('邮件配置信息:', {
+      host: configData.email.host,
+      port: configData.email.port,
+      user: configData.email.user ? '已配置' : '未配置',
+      password: configData.email.password ? '已配置' : '未配置',
+      from: configData.email.from
+    });
+  }
+}
+
+// 在模块加载时验证连接
+verifyTransporter();
 
 /**
  * 邮件发送工具

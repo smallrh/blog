@@ -33,11 +33,11 @@ const config = {
 
   // 邮件配置
   email: {
-    host: process.env.SMTP_HOST || 'smtp.example.com',
-    port: process.env.SMTP_PORT || 587,
-    user: process.env.SMTP_USER || '',
-    password: process.env.SMTP_PASSWORD || '',
-    from: process.env.SMTP_FROM || 'noreply@example.com'
+    host: process.env.SMTP_HOST || 'smtp.qq.com',
+    port: process.env.SMTP_PORT || 465,
+    user: process.env.QQ_EMAIL_USER || process.env.SMTP_USER || '',
+    password: process.env.QQ_EMAIL_PASS || process.env.SMTP_PASSWORD || '',
+    from: process.env.SMTP_FROM || process.env.QQ_EMAIL_USER || 'noreply@example.com'
   },
 
   // 验证码配置

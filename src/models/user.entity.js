@@ -5,13 +5,14 @@ const UserEntity = new EntitySchema({
   tableName: 'users',
   columns: {
     id: {
-      type: 'int',
-      primary: true,
-      generated: true
-    },
-    email: {
       type: 'varchar',
       length: 50,
+      primary: true,
+      generated: 'uuid'// 主键生成策略为uuid（别删除，安全）
+    },
+    username: {
+      type: 'varchar',
+      length: 100,
       nullable: false,
       unique: true
     },
@@ -21,35 +22,38 @@ const UserEntity = new EntitySchema({
       nullable: false,
       select: false
     },
-    name: {
+    email: {
       type: 'varchar',
-      length: 50,
-      nullable: false
+      length: 100,
+      nullable: false,
+      unique: true
+    },
+    display_name: {
+      type: 'varchar',
+      length: 100,
+      nullable: true
     },
     avatar: {
       type: 'varchar',
       length: 255,
       nullable: true
     },
-    bio: {
-      type: 'varchar',
-      length: 255,
-      nullable: true
-    },
     role: {
       type: 'enum',
-      enum: ['user', 'admin', 'superadmin'],
-      default: 'user'
+      enum: ['admin', 'editor', 'author', 'subscriber'],
+      default: 'subscriber'
+    },
+    last_login_at: {
+      type: 'timestamp',
+      nullable: true
+    },
+    login_count: {
+      type: 'int',
+      default: 0
     },
     status: {
       type: 'tinyint',
       default: 1
-    },
-    last_login_ip: {
-      type: 'varchar',
-      length: 100,
-      nullable: true,
-      name: 'last_login_ip'
     },
     created_at: {
       type: 'timestamp',
@@ -61,28 +65,6 @@ const UserEntity = new EntitySchema({
       default: () => 'CURRENT_TIMESTAMP',
       onUpdate: 'CURRENT_TIMESTAMP',
       name: 'updated_at'
-    },
-    resetToken: {
-      type: 'varchar',
-      length: 100,
-      nullable: true,
-      select: false
-    },
-    resetTokenExpires: {
-      type: 'timestamp',
-      nullable: true,
-      select: false
-    },
-    verificationCode: {
-      type: 'varchar',
-      length: 6,
-      nullable: true,
-      select: false
-    },
-    verificationCodeExpires: {
-      type: 'timestamp',
-      nullable: true,
-      select: false
     }
   },
   relations: {

@@ -13,9 +13,14 @@ const requestValidator = {
   
   // 注册验证
   register: {
-    name: { required: true, message: '用户名不能为空', min: 2, max: 50 },
+    // 兼容name字段用于向后兼容
+    name: { required: false },
+    // 添加username和display_name字段支持
+    username: { required: true, message: '用户名不能为空', min: 2, max: 50 },
+    display_name: { required: false },
     email: { required: true, message: '邮箱不能为空', email: true },
-    password: { required: true, message: '密码不能为空', min: 6 }
+    password: { required: true, message: '密码不能为空', min: 6 },
+    verify_code: { required: true, message: '验证码不能为空' }
   },
   
   // 邮箱验证
