@@ -160,10 +160,127 @@ const redis = {
     }
   },
   
+  // 设置带过期时间的键值对
+  async setex(key, seconds, value) {
+    try {
+      // 操作前确保连接正常
+      if (!(await ensureRedisConnection())) {
+        console.error(`Redis连接异常，无法设置带过期时间的键: ${key}`);
+        return false;
+      }
+      
+      console.log(`执行Redis setex操作: 键=${key}, 过期时间=${seconds}s`);
+      const jsonValue = typeof value === 'object' ? JSON.stringify(value) : value;
+      await redisClient.setEx(key, seconds, jsonValue);
+      console.log(`Redis setex操作成功: 键=${key}`);
+      return true;
+    } catch (error) {
+      console.error(`Redis setex error [${key}]:`, error);
+      return false;
+    }
+  },
+  
   // 获取连接状态的方法
   isConnected() {
     return isRedisConnected();
-  }
+  },
+  
+  // 集合操作：获取集合中的所有成员
+  async smembers(key) {
+    try {
+      // 操作前确保连接正常
+      if (!(await ensureRedisConnection())) {
+        console.error(`Redis连接异常，无法获取集合成员: ${key}`);
+        return [];
+      }
+      
+      console.log(`执行Redis smembers操作: 键=${key}`);
+      const members = await redisClient.sMembers(key);
+      console.log(`Redis smembers操作完成: 键=${key}, 成员数量=${members.length}`);
+      return members;
+    } catch (error) {
+      console.error(`Redis smembers error [${key}]:`, error);
+      return [];
+    }
+  },
+  
+  // 集合操作：添加成员到集合
+  async sadd(key, member) {
+    try {
+      // 操作前确保连接正常
+      if (!(await ensureRedisConnection())) {
+        console.error(`Redis连接异常，无法添加集合成员: ${key}`);
+        return false;
+      }
+      
+      console.log(`执行Redis sadd操作: 键=${key}, 成员=${member}`);
+      const result = await redisClient.sAdd(key, member);
+      console.log(`Redis sadd操作成功: 键=${key}, 结果=${result}`);
+      // 返回实际的添加结果，1表示添加成功，0表示成员已存在
+      return result > 0;
+    } catch (error) {
+      console.error(`Redis sadd error [${key}]:`, error);
+      return false;
+    }
+  },
+  
+  // 集合操作：从集合中移除成员
+  async srem(key, member) {
+    try {
+      // 操作前确保连接正常
+      if (!(await ensureRedisConnection())) {
+        console.error(`Redis连接异常，无法移除集合成员: ${key}`);
+        return false;
+      }
+      
+      console.log(`执行Redis srem操作: 键=${key}, 成员=${member}`);
+      const result = await redisClient.sRem(key, member);
+      console.log(`Redis srem操作成功: 键=${key}, 结果=${result}`);
+      // 返回实际的移除结果，1表示移除成功，0表示成员不存在
+      return result > 0;
+    } catch (error) {
+      console.error(`Redis srem error [${key}]:`, error);
+      return false;
+    }
+  },
+  
+  // 设置键的过期时间
+  async expire(key, seconds) {
+    try {
+      // 操作前确保连接正常
+      if (!(await ensureRedisConnection())) {
+        console.error(`Redis连接异常，无法设置过期时间: ${key}`);
+        return false;
+      }
+      
+      console.log(`执行Redis expire操作: 键=${key}, 过期时间=${seconds}s`);
+      await redisClient.expire(key, seconds);
+      console.log(`Redis expire操作成功: 键=${key}`);
+      return true;
+    } catch (error) {
+      console.error(`Redis expire error [${key}]:`, error);
+      return false;
+    }
+  },
+  
+  // 集合操作：检查成员是否存在于集合中
+  async sismember(key, member) {
+    try {
+      // 操作前确保连接正常
+      if (!(await ensureRedisConnection())) {
+        console.error(`Redis连接异常，无法检查成员: ${key}`);
+        return false;
+      }
+      
+      console.log(`执行Redis sismember操作: 键=${key}, 成员=${member}`);
+      const result = await redisClient.sIsMember(key, member);
+      console.log(`Redis sismember操作完成: 键=${key}, 成员=${member}, 是否存在=${result}`);
+      return result;
+    } catch (error) {
+      console.error(`Redis sismember error [${key}]:`, error);
+      return false;
+    }
+  },
 };
 
 // 导出redis客户端和初始化函数

@@ -37,24 +37,26 @@ const apiRouter = express.Router();
 
 // 前台API路由
 apiRouter.use('/frontend/auth', authFrontendRouter);
-apiRouter.use('/frontend/users', userFrontendRouter);
-apiRouter.use('/frontend/posts', postFrontendRouter);
-apiRouter.use('/frontend/categories', categoryFrontendRouter);
-apiRouter.use('/frontend/tags', tagFrontendRouter);
-apiRouter.use('/frontend/comments', commentFrontendRouter);
+// 为其他没有特定限流的前台路由应用全局限流
+apiRouter.use('/frontend/users', apiLimiter, userFrontendRouter);
+apiRouter.use('/frontend/posts', apiLimiter, postFrontendRouter);
+apiRouter.use('/frontend/categories', apiLimiter, categoryFrontendRouter);
+apiRouter.use('/frontend/tags', apiLimiter, tagFrontendRouter);
+apiRouter.use('/frontend/comments', apiLimiter, commentFrontendRouter);
 
 // 后台API路由
 apiRouter.use('/admin/auth', authAdminRouter);
-apiRouter.use('/admin/users', userAdminRouter);
-apiRouter.use('/admin/posts', postAdminRouter);
-apiRouter.use('/admin/categories', categoryAdminRouter);
-apiRouter.use('/admin/tags', tagAdminRouter);
-apiRouter.use('/admin/comments', commentAdminRouter);
-apiRouter.use('/admin/attachments', attachmentAdminRouter);
-apiRouter.use('/admin/settings', settingAdminRouter);
+// 为其他没有特定限流的后台路由应用全局限流
+apiRouter.use('/admin/users', apiLimiter, userAdminRouter);
+apiRouter.use('/admin/posts', apiLimiter, postAdminRouter);
+apiRouter.use('/admin/categories', apiLimiter, categoryAdminRouter);
+apiRouter.use('/admin/tags', apiLimiter, tagAdminRouter);
+apiRouter.use('/admin/comments', apiLimiter, commentAdminRouter);
+apiRouter.use('/admin/attachments', apiLimiter, attachmentAdminRouter);
+apiRouter.use('/admin/settings', apiLimiter, settingAdminRouter);
 
 // 应用API路由组
-router.use('/api', apiLimiter, apiRouter);
+router.use('/api', apiRouter);
 
 // 健康检查
 router.use(healthController);

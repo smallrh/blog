@@ -118,6 +118,88 @@ class AuthService {
 
     // 获取不包含密码的用户信息
     const userInfo = await this.userRepository.findById(user.id);
+    
+    // 将用户信息存入Redis，使用与token相同的过期时间
+    // 解析expiresIn字符串，转换为秒
+    let expireSeconds = 3600; // 默认1小时
+    if (config.jwt.expiresIn) {
+      const match = config.jwt.expiresIn.match(/(\d+)([hmd])/);
+      if (match) {
+        const value = parseInt(match[1]);
+        const unit = match[2];
+        switch (unit) {
+          case 'h':
+            expireSeconds = value * 3600;
+            break;
+          case 'd':
+            expireSeconds = value * 86400;
+            break;
+          case 'm':
+            expireSeconds = value * 60;
+            break;
+        }
+      }
+    }
+    
+    // 处理用户之前的有效token，使其失效
+    const userTokensKey = `user:${user.id}:tokens`;
+    
+    try {
+      // 获取集合中的所有token
+      const existingTokens = await redis.smembers(userTokensKey); // 注意：在redis.js中已正确映射到sMembers
+      
+      if (existingTokens && existingTokens.length > 0) {
+        // 将所有旧token加入黑名单
+        for (const oldToken of existingTokens) {
+          try {
+            const decoded = jwt.decode(oldToken);
+            if (decoded) {
+              const expiryTime = decoded.exp - Math.floor(Date.now() / 1000);
+              if (expiryTime > 0) {
+                // 将旧token加入黑名单
+                await redis.setex(`token:blacklist:${oldToken}`, expiryTime, '1');
+                // 清理对应的缓存
+                const oldTokenMapKey = `token:map:${oldToken}`;
+                try {
+                  const oldUserCacheKey = await redis.get(oldTokenMapKey);
+                  if (oldUserCacheKey) {
+                    await redis.del(oldUserCacheKey);
+                    await redis.del(oldTokenMapKey);
+                  }
+                } catch (cacheError) {
+                  console.error('清理token缓存时出错:', cacheError);
+                }
+              }
+            }
+          } catch (tokenError) {
+            console.error('处理旧token时出错:', tokenError);
+          }
+        }
+        
+        // 清空旧的token集合
+        try {
+          await redis.del(userTokensKey);
+        } catch (delError) {
+          console.error('删除旧token集合时出错:', delError);
+        }
+      }
+    } catch (smembersError) {
+      console.error('获取用户token集合时出错:', smembersError);
+    }
+    
+    // 生成Redis键名
+    const userCacheKey = `user:${user.id}:${token.substring(0, 10)}`;
+    // 存储用户信息，但不设置user:user_id:tokens集合的value
+    await redis.set(userCacheKey, userInfo, expireSeconds);
+    
+    // 存储token与用户缓存键的映射，用于登出时清理
+    const tokenMapKey = `token:map:${token}`;
+    await redis.set(tokenMapKey, userCacheKey, expireSeconds);
+    
+    // 使用Redis集合存储用户的有效token，只保留最新的token
+    await redis.sadd(userTokensKey, token); // 注意：在redis.js中已正确映射到sAdd
+    // 设置集合的过期时间
+    await redis.expire(userTokensKey, expireSeconds);
 
     return {
       token,
@@ -131,13 +213,86 @@ class AuthService {
    * @returns {Promise<boolean>} 登出结果
    */
   async logout(token) {
-    // 获取token过期时间
-    const decoded = jwt.decode(token);
-    const expiryTime = decoded.exp - Math.floor(Date.now() / 1000);
+    try {
+      // 获取token过期时间
+      const decoded = jwt.decode(token);
+      if (!decoded || !decoded.exp) {
+        console.error('无效的token格式');
+        return true;
+      }
+      
+      const expiryTime = decoded.exp - Math.floor(Date.now() / 1000);
+      
+      // 查找对应的用户缓存键
+      const tokenMapKey = `token:map:${token}`;
+      try {
+        const userCacheKey = await redis.get(tokenMapKey);
+        
+        if (userCacheKey) {
+          // 删除用户缓存数据
+          try {
+            await redis.del(userCacheKey);
+          } catch (delCacheError) {
+            console.error('删除用户缓存时出错:', delCacheError);
+          }
+          // 删除token映射
+          try {
+            await redis.del(tokenMapKey);
+            console.log(`用户缓存已清理: ${userCacheKey}`);
+          } catch (delMapError) {
+            console.error('删除token映射时出错:', delMapError);
+          }
+        }
+      } catch (getError) {
+        console.error('获取token映射时出错:', getError);
+      }
 
-    // 将token加入黑名单，过期时间设置为token剩余有效期
-    await redis.setex(`token:blacklist:${token}`, expiryTime, '1');
-    return true;
+      // 将token加入黑名单，过期时间设置为token剩余有效期
+      try {
+        await redis.setex(`token:blacklist:${token}`, expiryTime, '1');
+      } catch (blacklistError) {
+        console.error('将token加入黑名单时出错:', blacklistError);
+      }
+      
+      // 从用户token集合中移除该token
+      if (decoded && decoded.id) {
+        const userTokensKey = `user:${decoded.id}:tokens`;
+        try {
+          await redis.srem(userTokensKey, token); // 注意：在redis.js中已正确映射到sRem
+        } catch (sremError) {
+          console.error('从用户token集合中移除token时出错:', sremError);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('登出时清理缓存失败:', error);
+      // 即使清理缓存失败，也要将token加入黑名单
+      try {
+        const decoded = jwt.decode(token);
+        if (decoded && decoded.exp) {
+          const expiryTime = decoded.exp - Math.floor(Date.now() / 1000);
+          try {
+            await redis.setex(`token:blacklist:${token}`, expiryTime, '1');
+          } catch (blacklistError) {
+            console.error('将token加入黑名单失败:', blacklistError);
+          }
+          
+          // 尝试从用户token集合中移除该token
+          if (decoded.id) {
+            const userTokensKey = `user:${decoded.id}:tokens`;
+            try {
+              await redis.srem(userTokensKey, token); // 注意：在redis.js中已正确映射到sRem
+            } catch (sremError) {
+              console.error('从用户token集合中移除token失败:', sremError);
+            }
+          }
+        }
+      } catch (innerError) {
+        console.error('登出异常处理中出错:', innerError);
+      }
+      return true;
+    }
   }
 
   /**
@@ -344,6 +499,15 @@ class AuthService {
       if (isBlacklisted) {
         throw new Error('Token has been revoked');
       }
+      
+      // 尝试从Redis获取用户信息
+      const oldUserCacheKey = `user:${decoded.id}:${oldToken.substring(0, 10)}`;
+      let userInfo = await redis.get(oldUserCacheKey);
+      
+      // 如果缓存中没有用户信息，从数据库获取
+      if (!userInfo) {
+        userInfo = await this.userRepository.findById(decoded.id);
+      }
 
       // 生成新token
       const newToken = jwt.sign(
@@ -352,9 +516,54 @@ class AuthService {
         { expiresIn: config.jwt.expiresIn }
       );
 
+      // 解析expiresIn字符串，转换为秒
+      let expireSeconds = 3600; // 默认1小时
+      if (config.jwt.expiresIn) {
+        const match = config.jwt.expiresIn.match(/(\d+)([hmd])/);
+        if (match) {
+          const value = parseInt(match[1]);
+          const unit = match[2];
+          switch (unit) {
+            case 'h':
+              expireSeconds = value * 3600;
+              break;
+            case 'd':
+              expireSeconds = value * 86400;
+              break;
+            case 'm':
+              expireSeconds = value * 60;
+              break;
+          }
+        }
+      }
+      
+      // 更新用户缓存，使用新token
+      const newUserCacheKey = `user:${decoded.id}:${newToken.substring(0, 10)}`;
+      await redis.set(newUserCacheKey, userInfo, expireSeconds);
+      
+      // 存储新token与用户缓存键的映射
+      const newTokenMapKey = `token:map:${newToken}`;
+      await redis.set(newTokenMapKey, newUserCacheKey, expireSeconds);
+
+      // 清理旧token的缓存映射
+      const oldTokenMapKey = `token:map:${oldToken}`;
+      await redis.del(oldTokenMapKey);
+
       // 将旧token加入黑名单
-      const expiryTime = decoded.exp - Math.floor(Date.now() / 1000);
-      await redis.setex(`token:blacklist:${oldToken}`, expiryTime, '1');
+      const oldExpiryTime = decoded.exp - Math.floor(Date.now() / 1000);
+      await redis.setex(`token:blacklist:${oldToken}`, oldExpiryTime, '1');
+      
+      // 更新用户token集合，移除旧token，添加新token
+      const userTokensKey = `user:${decoded.id}:tokens`;
+      
+      // 从集合中移除旧token
+      await redis.srem(userTokensKey, oldToken); // 注意：在redis.js中已正确映射到sRem
+      
+      // 添加新token到集合
+      await redis.sadd(userTokensKey, newToken); // 注意：在redis.js中已正确映射到sAdd
+      
+      // 确保集合设置了过期时间
+      await redis.expire(userTokensKey, expireSeconds);
 
       return { token: newToken };
     } catch (error) {

@@ -3,7 +3,7 @@ const router = require('./router.js');
 const { logger } = require('./core/logger.js');
 const { config } = require('./core/config.js');
 const { initializeDatabase } = require('./core/database.js');
-// const { connectRedis } = require('./core/redis.js');
+const { initializeRedis } = require('./core/redis.js');
 const { createDir } = require('./utils/file.js'); // 注意：这个文件需要创建
 
 const app = express();
@@ -19,9 +19,9 @@ async function initializeApp() {
     await initializeDatabase();
     logger.info('Database connected successfully');
     
-    // 暂时不需要Redis连接
-    // await connectRedis();
-    // logger.info('Redis connected successfully');
+    // 初始化Redis连接
+    await initializeRedis();
+    logger.info('Redis connected successfully');
     
     // 使用路由
     app.use(router);
