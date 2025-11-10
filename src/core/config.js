@@ -12,9 +12,9 @@ const config = {
   database: {
     host: process.env.DB_HOST || 'localhost',
     port: process.env.DB_PORT || 3306,
-    username: process.env.DB_USERNAME || 'root',
-    password: process.env.DB_PASSWORD || 'password',
-    database: process.env.DB_NAME || 'blog_backend'
+    username: process.env.DB_USER || 'root', // 修改为使用DB_USER
+    password: process.env.DB_PASSWORD || '1234', // 修改默认密码
+    database: process.env.DB_NAME || 'blog_db' // 修改默认数据库名
   },
 
   // Redis配置
@@ -22,13 +22,15 @@ const config = {
     host: process.env.REDIS_HOST || 'localhost',
     port: process.env.REDIS_PORT || 6379,
     password: process.env.REDIS_PASSWORD || '',
-    db: process.env.REDIS_DB || 0
+    db: process.env.REDIS_DB || 1 // 修改默认DB为1
   },
 
   // JWT配置
   jwt: {
-    secret: process.env.JWT_SECRET || 'default_jwt_secret',
-    expiresIn: process.env.JWT_EXPIRES_IN || '24h'
+    accessSecret: process.env.JWT_ACCESS_SECRET || 'blog-mice-access-secret-key-2024', // 修改为使用JWT_ACCESS_SECRET
+    refreshSecret: process.env.JWT_REFRESH_SECRET || 'blog-mice-refresh-secret-key-2024', // 添加refreshSecret
+    accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '1h', // 添加访问令牌过期时间
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d' // 添加刷新令牌过期时间
   },
 
   // 邮件配置
@@ -51,13 +53,27 @@ const config = {
   rateLimit: {
     windowMs: 15 * 60 * 1000, // 15分钟
     max: 100                  // 每个IP限制的请求数
+  },
+  
+  // Bcrypt配置
+  bcrypt: {
+    saltRounds: 10            // 密码加密的盐轮数
+  },
+  
+  // 密码策略配置
+  passwordPolicy: {
+    minLength: 6,             // 最小长度
+    requireUppercase: false,  // 是否需要大写字母
+    requireLowercase: true,   // 是否需要小写字母
+    requireNumber: true,      // 是否需要数字
+    requireSpecialChar: false // 是否需要特殊字符
   }
 };
 
 // 导出配置验证方法
 const validateConfig = () => {
   const requiredFields = [
-    { field: 'JWT_SECRET', message: 'JWT密钥必须配置' },
+    { field: 'JWT_ACCESS_SECRET', message: 'JWT访问密钥必须配置' },
     { field: 'DB_HOST', message: '数据库主机必须配置' },
     { field: 'DB_NAME', message: '数据库名称必须配置' }
   ];

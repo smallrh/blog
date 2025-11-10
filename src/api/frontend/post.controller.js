@@ -1,6 +1,6 @@
 const express = require('express');
 const { successResponse, errorResponse, notFoundResponse } = require('../../core/response');
-const { validate } = require('../../utils/validator');
+const validate = require('../../utils/validator');
 const { paginationUtil } = require('../../utils/pagination');
 const PostService = require('../../services/post.service');
 const { authenticateToken } = require('../../middleware/auth.middleware');

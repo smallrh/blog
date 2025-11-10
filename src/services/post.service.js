@@ -1,6 +1,7 @@
 const PostRepository = require('../repositories/post.repository');
 const TagRepository = require('../repositories/tag.repository');
-const redis = require('../core/redis');
+const { redis } = require('../core/redis');
+const { AppDataSource } = require('../core/database');
 const { paginationUtil } = require('../utils/pagination');
 const { cacheGet, cacheSet, cacheDel } = require('../utils/cache');
 
@@ -29,7 +30,7 @@ class PostService {
       const { list: posts, total } = await this.postRepository.findWithFilters(offset, limit, filters);
 
       const result = {
-        list: formattedPosts,
+        list: posts,
         pagination: {
           page,
           pageSize,
@@ -118,22 +119,23 @@ class PostService {
       const cacheKey = `hot_posts:${limit}`;
       const cachedData = await redis.get(cacheKey);
       
+      // redis.get()已经内置了JSON解析，直接返回即可
       if (cachedData) {
-        return JSON.parse(cachedData);
+        return cachedData;
       }
 
       const query = `
-        SELECT id, title, slug, cover, view_count 
+        SELECT id, title, slug, cover_image AS cover, view_count 
         FROM posts 
-        WHERE status = 1 
+        WHERE status = "published" 
         ORDER BY view_count DESC 
         LIMIT ?
       `;
       
-      const [posts] = await database.query(query, [limit]);
+      const [posts] = await AppDataSource.query(query, [limit]);
 
       // 缓存结果，有效期1小时
-      await redis.setex(cacheKey, 3600, JSON.stringify(posts));
+      await redis.set(cacheKey, posts, 3600);
 
       return posts;
     } catch (error) {
@@ -151,7 +153,7 @@ class PostService {
   static async likePost(postId, userId) {
     try {
       // 检查文章是否存在
-      const [posts] = await database.query('SELECT id, like_count FROM posts WHERE id = ? AND status = 1', [postId]);
+      const [posts] = await AppDataSource.query('SELECT id, like_count FROM posts WHERE id = ? AND status = 1', [postId]);
       
       if (!posts || posts.length === 0) {
         throw new Error('文章不存在');
@@ -167,8 +169,8 @@ class PostService {
       if (isLiked) {
         // 已点赞，取消点赞
         await redis.del(cacheKey);
-        await database.query('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', [postId, userId]);
-        await database.query('UPDATE posts SET like_count = GREATEST(0, like_count - 1) WHERE id = ?', [postId]);
+        await AppDataSource.query('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', [postId, userId]);
+        await AppDataSource.query('UPDATE posts SET like_count = GREATEST(0, like_count - 1) WHERE id = ?', [postId]);
         
         // 更新缓存
         await redis.decr(likeKey);
@@ -180,8 +182,8 @@ class PostService {
       } else {
         // 未点赞，添加点赞
         await redis.setex(cacheKey, 86400, '1'); // 缓存1天
-        await database.query('INSERT IGNORE INTO post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())', [postId, userId]);
-        await database.query('UPDATE posts SET like_count = like_count + 1 WHERE id = ?', [postId]);
+        await AppDataSource.query('INSERT IGNORE INTO post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())', [postId, userId]);
+        await AppDataSource.query('UPDATE posts SET like_count = like_count + 1 WHERE id = ?', [postId]);
         
         // 更新缓存
         await redis.incr(likeKey);
@@ -206,7 +208,7 @@ class PostService {
   static async unlikePost(postId, userId) {
     try {
       // 检查文章是否存在
-      const [posts] = await database.query('SELECT id, like_count FROM posts WHERE id = ? AND status = 1', [postId]);
+      const [posts] = await AppDataSource.query('SELECT id, like_count FROM posts WHERE id = ? AND status = 1', [postId]);
       
       if (!posts || posts.length === 0) {
         throw new Error('文章不存在');
@@ -222,15 +224,15 @@ class PostService {
       if (isLiked) {
         // 已点赞，取消点赞
         await redis.del(cacheKey);
-        await database.query('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', [postId, userId]);
-        await database.query('UPDATE posts SET like_count = GREATEST(0, like_count - 1) WHERE id = ?', [postId]);
+        await AppDataSource.query('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', [postId, userId]);
+        await AppDataSource.query('UPDATE posts SET like_count = GREATEST(0, like_count - 1) WHERE id = ?', [postId]);
         
         // 更新缓存
         await redis.decr(likeKey);
       }
       
       // 获取最新的点赞数
-      const [updatedPosts] = await database.query('SELECT like_count FROM posts WHERE id = ?', [postId]);
+      const [updatedPosts] = await AppDataSource.query('SELECT like_count FROM posts WHERE id = ?', [postId]);
       
       return {
         like_count: updatedPosts[0].like_count,
@@ -251,21 +253,21 @@ class PostService {
   static async collectPost(postId, userId) {
     try {
       // 检查文章是否存在
-      const [posts] = await database.query('SELECT id FROM posts WHERE id = ? AND status = 1', [postId]);
+      const [posts] = await AppDataSource.query('SELECT id FROM posts WHERE id = ? AND status = 1', [postId]);
       
       if (!posts || posts.length === 0) {
         throw new Error('文章不存在');
       }
 
       // 检查是否已收藏
-      const [collections] = await database.query(
+      const [collections] = await AppDataSource.query(
         'SELECT id FROM post_collections WHERE post_id = ? AND user_id = ?',
         [postId, userId]
       );
       
       if (collections && collections.length > 0) {
         // 已收藏，取消收藏
-        await database.query(
+        await AppDataSource.query(
           'DELETE FROM post_collections WHERE post_id = ? AND user_id = ?',
           [postId, userId]
         );
@@ -275,7 +277,7 @@ class PostService {
         };
       } else {
         // 未收藏，添加收藏
-        await database.query(
+        await AppDataSource.query(
           'INSERT INTO post_collections (post_id, user_id, created_at) VALUES (?, ?, NOW())',
           [postId, userId]
         );

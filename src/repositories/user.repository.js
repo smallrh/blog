@@ -1,5 +1,7 @@
 const { AppDataSource } = require('../core/database');
 const User = require('../models/user.entity');
+const { Like, Not } = require('typeorm');
+const { log: logger } = require('../core/logger');
 
 /**
  * 用户数据访问层
@@ -153,15 +155,29 @@ class UserRepository {
    * @returns {Promise<boolean>}
    */
   async isEmailExists(email, excludeId = null) {
-    const where = { email };
-    if (excludeId) {
-      where.id = Not(excludeId);
+    try {
+      // 输入验证
+      if (!email || typeof email !== 'string') {
+        throw new Error('Invalid email parameter');
+      }
+      
+      const where = { email };
+      if (excludeId) {
+        where.id = Not(excludeId);
+      }
+      
+      // 执行计数查询
+      const count = await this.repo.count({ where });
+      // 确保返回布尔值
+      return count > 0;
+    } catch (error) {
+      // 记录错误并重新抛出，以便上层处理
+      logger.error('邮箱存在性检查失败', error);
+      throw error;
     }
-    return this.repo.count({ where }) > 0;
   }
 }
 
-// 添加缺失的导入
-const { Like, Not } = require('typeorm');
+// 导入已移至文件顶部
 
 module.exports = UserRepository;

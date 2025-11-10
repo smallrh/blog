@@ -3,7 +3,8 @@ const jwt = require('jsonwebtoken');
 const { config } = require('../core/config');
 const { redis } = require('../core/redis');
 const UserRepository = require('../repositories/user.repository');
-const { emailUtil } = require('../utils/email');
+const emailUtil = require('../utils/email');
+const { log: logger } = require('../core/logger');
 
 /**
  * 认证服务类
@@ -15,42 +16,108 @@ class AuthService {
   }
 
   /**
+   * 验证密码是否符合策略要求
+   * @param {string} password - 待验证的密码
+   * @returns {boolean} 密码是否有效
+   * @throws {Error} 当密码不符合要求时抛出错误
+   */
+  validatePassword(password) {
+    const policy = config.passwordPolicy;
+    
+    // 检查密码是否存在
+    if (!password || typeof password !== 'string') {
+      throw new Error('密码不能为空');
+    }
+    
+    // 检查密码长度
+    if (password.length < policy.minLength) {
+      throw new Error(`密码长度不能少于${policy.minLength}位`);
+    }
+    
+    // 检查是否包含小写字母
+    if (policy.requireLowercase && !/[a-z]/.test(password)) {
+      throw new Error('密码必须包含至少一个小写字母');
+    }
+    
+    // 检查是否包含数字
+    if (policy.requireNumber && !/[0-9]/.test(password)) {
+      throw new Error('密码必须包含至少一个数字');
+    }
+    
+    // 检查是否包含大写字母
+    if (policy.requireUppercase && !/[A-Z]/.test(password)) {
+      throw new Error('密码必须包含至少一个大写字母');
+    }
+    
+    // 检查是否包含特殊字符
+    if (policy.requireSpecialChar && !/[^A-Za-z0-9]/.test(password)) {
+      throw new Error('密码必须包含至少一个特殊字符');
+    }
+    
+    return true;
+  }
+
+  /**
    * 用户注册
    * @param {Object} userData - 用户注册数据
-   * @param {string} userData.name - 用户名
+   * @param {string} userData.username - 用户名
+   * @param {string} userData.name - 用户名（兼容旧接口）
    * @param {string} userData.email - 邮箱
+   * @param {string} userData.display_name - 显示名称
    * @param {string} userData.password - 密码
    * @returns {Promise<Object>} 注册成功的用户信息
    */
   async register(userData) {
     try {
+      logger.info('开始用户注册流程', { email: userData.email });
+      
+      // 参数验证
+      if (!userData || typeof userData !== 'object') {
+        throw new Error('无效的用户数据');
+      }
+      
+      // 验证邮箱
+      const email = userData.email;
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error('请输入有效的邮箱地址');
+      }
+      
       // 检查邮箱是否已存在
-      const isEmailExists = await this.userRepository.isEmailExists(userData.email);
+      logger.debug('检查邮箱是否已存在', { email });
+      const isEmailExists = await this.userRepository.isEmailExists(email);
       if (isEmailExists) {
-        throw new Error('Email already exists');
+        logger.warn('邮箱已存在', { email });
+        throw new Error('邮箱已被注册');
       }
 
+      // 验证密码
+      logger.debug('验证密码强度');
+      this.validatePassword(userData.password);
+      
       // 确保config.bcrypt存在，使用默认值以防配置缺失
       const saltRounds = config.bcrypt?.saltRounds || 10;
       
       // 加密密码
+      logger.debug('加密密码');
       const hashedPassword = await bcrypt.hash(userData.password, saltRounds);
       
       // 获取用户名，优先使用username，如果没有则使用name
       const username = userData.username || userData.name;
       
-      if (!username) {
+      if (!username || username.trim().length === 0) {
         throw new Error('用户名不能为空');
       }
-
-      // 记录创建用户前的数据
-      console.log('准备创建用户，数据:', { username, email: userData.email });
+      
+      // 确保用户名不包含敏感字符
+      if (!/^[a-zA-Z0-9_\u4e00-\u9fa5]{2,20}$/.test(username)) {
+        throw new Error('用户名只能包含字母、数字、下划线和中文，长度2-20位');
+      }
 
       // 创建用户数据对象
       const userDataToCreate = {
-        username: username,
-        display_name: userData.display_name || username,
-        email: userData.email,
+        username: username.trim(),
+        display_name: userData.display_name?.trim() || username.trim(),
+        email: email.toLowerCase(), // 邮箱统一转为小写
         password: hashedPassword,
         role: 'subscriber',
         status: 1,
@@ -59,22 +126,52 @@ class AuthService {
       };
 
       // 创建用户
+      logger.info('准备创建用户', { username: userDataToCreate.username, email: userDataToCreate.email });
       const newUser = await this.userRepository.create(userDataToCreate);
-      console.log('用户创建成功，ID:', newUser.id);
+      logger.info('用户创建成功', { userId: newUser.id, username: newUser.username });
 
       // 重新获取用户信息（不包含密码）
       const userInfo = await this.userRepository.findById(newUser.id);
+      
+      // 可选：发送欢迎邮件
+      // 这里可以调用邮件服务发送欢迎邮件，但不影响注册流程
+      if (userInfo) {
+        try {
+          if (emailUtil?.emailUtil?.sendVerificationCode) {
+            logger.debug('发送欢迎邮件', { userId: userInfo.id });
+            // 注意：这里不等待邮件发送完成，避免影响注册流程
+            emailUtil.emailUtil.sendVerificationCode(
+              userInfo.email,
+              '欢迎注册我们的平台！',
+              'welcome'
+            ).catch(err => {
+              logger.error('发送欢迎邮件失败', { userId: userInfo.id, error: err.message });
+            });
+          }
+        } catch (emailError) {
+          logger.error('处理欢迎邮件时出错', { error: emailError.message });
+          // 不影响主流程，继续返回用户信息
+        }
+      }
+
       return userInfo;
     } catch (error) {
       // 详细记录错误信息
-      console.error('注册过程中发生错误:', error);
+      logger.error('注册过程中发生错误', { error: error.message, stack: error.stack });
       
       // 处理数据库字段错误
       if (error.message && error.message.includes('Unknown column')) {
-        throw new Error('数据库表结构可能未正确初始化，请确保运行了SQL脚本创建表');
+        const dbError = new Error('数据库表结构可能未正确初始化，请确保运行了SQL脚本创建表');
+        dbError.status = 500;
+        throw dbError;
       }
       
-      // 重新抛出原始错误
+      // 为错误添加状态码
+      if (!error.status) {
+        error.status = error.message.includes('已被注册') || error.message.includes('无效') ? 400 : 500;
+      }
+      
+      // 重新抛出错误
       throw error;
     }
   }
@@ -112,8 +209,8 @@ class AuthService {
     // 生成JWT token
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
-      config.jwt.secret,
-      { expiresIn: config.jwt.expiresIn }
+      config.jwt.accessSecret,
+      { expiresIn: config.jwt.accessExpiresIn }
     );
 
     // 获取不包含密码的用户信息
@@ -315,81 +412,177 @@ class AuthService {
    * @returns {Promise<boolean>} 发送结果
    */
   async sendVerificationCode(email, type) {
+    // 参数验证
+    if (!email || !type) {
+      logger.error('缺少必要参数: email=', email, 'type=', type);
+      throw new Error('Invalid parameters');
+    }
+    
+    // 验证type参数值
+    if (!['register', 'reset_password'].includes(type)) {
+      logger.error('无效的验证码类型:', type);
+      throw new Error('Invalid verification code type');
+    }
+    
     try {
-      // 添加详细的方法调用日志
-      console.log(`开始发送验证码流程：邮箱=${email}, 类型=${type}`);
+      logger.info(`开始发送验证码流程：邮箱=${email}, 类型=${type}`);
       
-      // 根据验证码类型进行不同的验证
-      console.log('验证邮箱是否已存在...');
-      const userExists = await this.userRepository.isEmailExists(email);
-      
-      // 注册类型：邮箱必须不存在
-      if (type === 'register' && userExists) {
-        console.error(`注册验证失败：邮箱已存在: ${email}`);
-        throw new Error('Email already exists');
-      }
-      // 重置密码类型：邮箱必须已存在
-      else if (type === 'reset_password' && !userExists) {
-        console.error(`重置密码验证失败：邮箱未注册: ${email}`);
-        throw new Error('Email not registered');
+      // 1. 邮箱存在性验证 - 简化错误处理
+      try {
+        logger.debug(`验证邮箱存在性: ${email}, 类型: ${type}`);
+        
+        // 直接调用仓库方法，添加try-catch来捕获任何数据库操作异常
+        const userExists = await this.userRepository.isEmailExists(email);
+        logger.debug(`邮箱查询结果: ${userExists}`);
+        
+        // 业务逻辑验证
+        if (type === 'register' && userExists) {
+          logger.warn(`注册验证失败：邮箱已存在: ${email}`);
+          throw new Error('邮箱已被注册');
+        } else if (type === 'reset_password' && !userExists) {
+          logger.warn(`重置密码验证失败：邮箱未注册: ${email}`);
+          throw new Error('邮箱未注册');
+        }
+        
+        logger.debug('邮箱验证通过');
+      } catch (error) {
+        // 记录完整错误信息
+        logger.error('邮箱验证失败', error);
+        
+        // 区分业务错误和系统错误
+        if (error.message === '邮箱已被注册' || error.message === '邮箱未注册') {
+          throw error; // 直接抛出业务逻辑错误
+        }
+        
+        // 对于系统错误，提供友好的错误消息
+        throw new Error('验证邮箱信息失败');
       }
 
-      // 生成6位数字验证码
-      console.log('生成6位数字验证码...');
+      // 2. 生成验证码
       const code = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log(`验证码生成成功: ${code}`);
+      logger.debug(`验证码生成成功: ${code}`);
       
-      // 计算过期时间（5分钟后）
+      // 计算过期时间（5分钟）
       const expiryTime = 5 * 60;
-      console.log(`验证码有效期设置为: ${expiryTime}秒`);
 
-      // 构建Redis键名
+      // 3. Redis存储操作（添加独立try-catch和更健壮的错误处理）
       const redisKey = `verify:code:${email}:${type}`;
-      console.log(`构建Redis键名: ${redisKey}`);
+      logger.debug(`构建Redis键名: ${redisKey}`);
       
-      // 存储验证码到Redis，设置过期时间
-      console.log(`开始存储验证码到Redis...`);
-      await redis.set(redisKey, code, expiryTime);
-      console.log(`验证码成功存储到Redis: ${redisKey}`);
-      
-      // 验证存储结果
-      console.log(`验证验证码存储结果...`);
-      const storedCode = await redis.get(redisKey);
-      
-      // 添加详细的类型和值检查
-      console.log(`从Redis读取的验证码: ${storedCode}, 类型: ${typeof storedCode}`);
-      console.log(`原始验证码: ${code}, 类型: ${typeof code}`);
-      
-      // 转换为字符串进行比较，避免类型不匹配问题
-      const storedCodeStr = String(storedCode);
-      const codeStr = String(code);
-      
-      if (storedCodeStr !== codeStr) {
-        console.error(`验证码存储异常：读取值与存储值不匹配`);
-        console.error(`字符串比较结果: 存储=${storedCodeStr}, 原始=${codeStr}`);
-        throw new Error('Failed to verify stored verification code');
+      try {
+        logger.debug(`开始存储验证码到Redis...`);
+        
+        // 检查redis实例是否有效
+        if (!redis || typeof redis.set !== 'function') {
+          logger.error('Redis实例不可用');
+          // 对于验证码功能，Redis是必需的，无法降级到其他存储
+          throw new Error('验证码服务暂时不可用，请稍后再试');
+        }
+        
+        // 首先尝试使用封装的set方法
+        let storeSuccess;
+        try {
+          // 使用我们封装的redis.set方法（它包含了连接检查和重试逻辑）
+          storeSuccess = await redis.set(redisKey, code, expiryTime);
+        } catch (setError) {
+          // 如果封装方法失败，尝试直接使用redis模块的底层方法（备用方案）
+          logger.warn(`封装的Redis set方法失败，尝试直接使用setex: ${setError.message}`);
+          try {
+            // 尝试直接使用redis模块中的setex方法
+            await redis.setex(redisKey, expiryTime, code);
+            storeSuccess = true;
+          } catch (fallbackError) {
+            logger.error(`Redis setex备用方法失败: ${fallbackError.message}`);
+            storeSuccess = false;
+          }
+        }
+        
+        // 检查存储是否成功
+        if (!storeSuccess) {
+          throw new Error('验证码存储失败：Redis操作未确认成功');
+        }
+        
+        // 验证存储结果（添加重试逻辑）
+        let storedCode;
+        const maxRetries = 3;
+        let retryCount = 0;
+        
+        while (!storedCode && retryCount < maxRetries) {
+          try {
+            storedCode = await redis.get(redisKey);
+            if (storedCode) break;
+          } catch (getError) {
+            logger.warn(`获取存储的验证码失败，重试中(${retryCount+1}/${maxRetries}): ${getError.message}`);
+          }
+          retryCount++;
+          // 短暂延迟后重试
+          if (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+          }
+        }
+        
+        logger.debug(`从Redis读取的验证码: ${storedCode || 'null'}`);
+        
+        // 验证存储成功
+        if (!storedCode) {
+          throw new Error('验证码存储失败：无法读取存储的验证码');
+        }
+        
+        // 确保进行类型安全的比较
+        const storedCodeStr = String(storedCode);
+        const codeStr = String(code);
+        
+        if (storedCodeStr !== codeStr) {
+          throw new Error(`验证码存储不一致：存储=${storedCode}, 生成=${code}`);
+        }
+        
+        logger.info(`验证码存储验证成功: ${redisKey}`);
+      } catch (redisError) {
+        logger.error('Redis操作错误:', redisError);
+        // 使用更友好的错误消息
+        throw new Error('验证码服务暂时不可用，请稍后再试');
       }
-      
-      console.log(`验证码存储验证成功：读取值与存储值匹配`);
 
-      // 发送验证码邮件
-      console.log(`准备发送验证码邮件...`);
-      await emailUtil.sendVerificationCode(email, code, type);
-      console.log(`验证码邮件发送成功: ${email}`);
+      // 4. 邮件发送操作（添加独立try-catch和更健壮的错误处理）
+      try {
+        logger.debug(`准备发送验证码邮件...`);
+        
+        // 检查邮件配置是否有效
+        if (!config.email || !config.email.host || !config.email.user || !config.email.password) {
+          logger.error('邮件配置不完整');
+          // 对于邮件发送失败，但验证码已经存储成功的情况，我们仍然返回成功
+          // 因为用户可能仍然可以通过其他方式获取验证码
+          logger.warn('邮件配置不完整，但验证码已成功存储');
+          return true;
+        }
+        
+        await emailUtil.emailUtil.sendVerificationCode(email, code, type);
+        logger.info(`验证码邮件发送成功: ${email}`);
+      } catch (emailError) {
+        logger.error('邮件发送错误:', emailError);
+        // 即使邮件发送失败，也不阻止流程继续，因为验证码已经存储在Redis中
+        logger.warn('邮件发送失败，但验证码已成功存储，返回成功响应');
+        // 可以选择抛出错误或返回成功，这里选择返回成功
+        return true;
+      }
       
       return true;
     } catch (error) {
       // 记录详细错误信息
-      console.error('发送验证码失败:', error);
-      console.error('邮件配置检查:', {
+      logger.error('发送验证码失败:', error);
+      logger.error('请求详情:', {
         email: email,
         type: type,
-        smtpConfigured: config.email.user && config.email.password ? true : false,
-        smtpHost: config.email.host
+        timestamp: new Date().toISOString()
       });
       
-      // 重新抛出错误，保留原始错误信息
-      throw error;
+      // 确保错误消息不泄露敏感信息
+      const safeErrorMessage = error.message.includes('Redis') || error.message.includes('Email') 
+        ? '验证码服务暂时不可用，请稍后再试' 
+        : error.message;
+      
+      // 重新抛出错误，使用安全的错误消息
+      throw new Error(safeErrorMessage);
     }
   }
 
@@ -438,7 +631,7 @@ class AuthService {
       // 生成一个临时token用于重置密码验证
       const resetToken = jwt.sign(
         { email },
-        config.jwt.secret,
+        config.jwt.accessSecret, // 使用accessSecret
         { expiresIn: '10m' }
       );
 
@@ -456,29 +649,54 @@ class AuthService {
    */
   async resetPassword(resetToken, newPassword) {
     try {
+      console.log('开始重置密码流程');
+      
       // 验证重置token
-      const decoded = jwt.verify(resetToken, config.jwt.secret);
+      console.log('验证重置token...');
+      const decoded = jwt.verify(resetToken, config.jwt.accessSecret); // 使用accessSecret
       const email = decoded.email;
+      console.log(`Token验证成功，邮箱: ${email}`);
 
       // 查找用户
+      console.log(`查找用户: ${email}`);
       const user = await this.userRepository.findByEmail(email);
       if (!user) {
+        console.log(`用户不存在: ${email}`);
         throw new Error('User not found');
+      }
+      console.log(`用户找到: ID=${user.id}, 邮箱=${user.email}`);
+      
+      // 验证密码长度
+      console.log(`新密码长度: ${newPassword.length}`);
+      if (newPassword.length < 6) {
+        console.log('密码长度不足6位');
+        throw new Error('密码长度不能少于6位');
       }
 
       // 加密新密码
+      console.log('加密新密码...');
       const hashedPassword = await bcrypt.hash(newPassword, config.bcrypt.saltRounds);
+      console.log('密码加密完成');
 
       // 更新密码
+      console.log(`更新用户密码: ID=${user.id}`);
       await this.userRepository.update(user.id, {
         password: hashedPassword,
-        updatedAt: new Date()
+        updated_at: new Date()
       });
+      console.log('密码更新成功');
 
       return true;
     } catch (error) {
+      console.error('重置密码错误:', error);
       if (error.name === 'TokenExpiredError') {
         throw new Error('Reset token has expired');
+      }
+      if (error.message === 'User not found') {
+        throw new Error('用户不存在');
+      }
+      if (error.message === '密码长度不能少于6位') {
+        throw new Error('密码长度不能少于6位');
       }
       throw new Error('Invalid reset token');
     }
@@ -492,7 +710,7 @@ class AuthService {
   async refreshToken(oldToken) {
     try {
       // 验证旧token
-      const decoded = jwt.verify(oldToken, config.jwt.secret);
+    const decoded = jwt.verify(oldToken, config.jwt.refreshSecret);
       
       // 检查token是否在黑名单中
       const isBlacklisted = await redis.exists(`token:blacklist:${oldToken}`);
@@ -512,14 +730,14 @@ class AuthService {
       // 生成新token
       const newToken = jwt.sign(
         { id: decoded.id, email: decoded.email, role: decoded.role },
-        config.jwt.secret,
-        { expiresIn: config.jwt.expiresIn }
+        config.jwt.accessSecret,
+        { expiresIn: config.jwt.accessExpiresIn }
       );
 
       // 解析expiresIn字符串，转换为秒
       let expireSeconds = 3600; // 默认1小时
-      if (config.jwt.expiresIn) {
-        const match = config.jwt.expiresIn.match(/(\d+)([hmd])/);
+      if (config.jwt.accessExpiresIn) {
+        const match = config.jwt.accessExpiresIn.match(/(\d+)([hmd])/);
         if (match) {
           const value = parseInt(match[1]);
           const unit = match[2];

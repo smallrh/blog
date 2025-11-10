@@ -1,9 +1,8 @@
 const rateLimit = require('express-rate-limit');
 const RedisStore = require('rate-limit-redis').default;
 const { config } = require('../core/config.js');
-const { redisClient } = require('../core/redis.js');
-
-const { logger } = require('../core/logger');
+const { redisClient, ensureRedisConnection } = require('../core/redis.js');
+const { log: logger } = require('../core/logger');
 
 // 创建Redis存储实例
 const createRedisStore = (endpointName) => {
@@ -11,7 +10,24 @@ const createRedisStore = (endpointName) => {
   const validEndpointName = endpointName && typeof endpointName === 'string' ? endpointName : 'unknown';
   
   return new RedisStore({
-    sendCommand: (...args) => redisClient.sendCommand(args),
+    // 修改sendCommand以确保Redis连接正常
+    sendCommand: async (...args) => {
+      try {
+        // 确保Redis连接正常
+        const isConnected = await ensureRedisConnection();
+        if (!isConnected) {
+          logger.error('Redis connection failed, cannot perform rate limiting operation');
+          // 在Redis连接失败的情况下，我们仍然尝试执行命令，让rate-limit-redis库处理错误
+        }
+        
+        // 执行Redis命令
+        return redisClient.sendCommand(args);
+      } catch (error) {
+        logger.error(`Rate limit Redis command error: ${error.message}`);
+        // 重新抛出错误，让rate-limit-redis库处理
+        throw error;
+      }
+    },
     // 使用指定的key格式: ratelimit:{接口}:user_id
     prefix: 'ratelimit:',
     // 自定义生成key的函数
@@ -96,20 +112,68 @@ const registerLimiter = rateLimit({
 });
 
 /**
- * 验证码接口限流
+ * 验证码接口限流 - Redis优先，内存存储作为后备
  * 防止验证码轰炸
  */
-const verifyCodeLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1小时
-  max: 5, // 每IP每小时最多发送5次验证码
-  standardHeaders: true,
-  legacyHeaders: false,
-  store: createRedisStore('verify-code'),
-  message: {
-    code: 429,
-    message: 'Too many verification code requests, please try again later'
+const createVerifyCodeLimiter = () => {
+  try {
+    // 尝试使用Redis存储（首选方案）
+    logger.info('Creating verify code limiter with Redis store');
+    
+    // 自定义一个中间件链，先检查限流，再记录限流事件
+    const limiter = rateLimit({
+      windowMs: 60 * 60 * 1000, // 1小时
+      max: 5, // 每IP每小时最多发送5次验证码
+      standardHeaders: true,
+      legacyHeaders: false,
+      store: createRedisStore('verify-code'),
+      message: {
+        code: 429,
+        message: 'Too many verification code requests, please try again later'
+      }
+      // 移除自定义keyGenerator，使用默认实现来正确处理IPv6地址
+    });
+    
+    // 创建一个包装中间件，处理限流事件记录
+    return (req, res, next) => {
+      // 保存原始的send方法
+      const originalSend = res.send;
+      
+      // 重写send方法来检测限流响应
+      res.send = function(body) {
+        // 检查是否是限流响应（状态码429）
+        if (res.statusCode === 429) {
+          // 使用request对象上的IP地址，让express-rate-limit正确处理IPv6
+          const clientIp = req.ip || 'unknown';
+          logger.warn(`Rate limit reached for verification code: verify-code:${clientIp}`);
+        }
+        
+        // 调用原始的send方法
+        return originalSend.call(this, body);
+      };
+      
+      // 调用原始的limiter中间件
+      limiter(req, res, next);
+    };
+  } catch (error) {
+    // 如果Redis初始化失败，使用内存存储作为后备方案
+    logger.error(`Failed to create Redis-backed limiter, falling back to memory store: ${error.message}`);
+    return rateLimit({
+      windowMs: 60 * 60 * 1000, // 1小时
+      max: 5, // 每IP每小时最多发送5次验证码
+      standardHeaders: true,
+      legacyHeaders: false,
+      // 使用默认内存存储和默认的IP处理逻辑
+      message: {
+        code: 429,
+        message: 'Too many verification code requests, please try again later'
+      }
+    });
   }
-});
+};
+
+// 创建验证码限流中间件
+const verifyCodeLimiter = createVerifyCodeLimiter();
 
 /**
  * 自定义限流配置生成器

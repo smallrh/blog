@@ -81,9 +81,7 @@ CREATE TABLE IF NOT EXISTS posts (
     INDEX idx_status (status),
     INDEX idx_published_at (published_at),
     INDEX idx_is_top (is_top),
-    INDEX idx_slug (slug),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+    INDEX idx_slug (slug)
 );
 
 -- 评论表
@@ -106,9 +104,7 @@ CREATE TABLE IF NOT EXISTS comments (
     INDEX idx_user_id (user_id),
     INDEX idx_parent_id (parent_id),
     INDEX idx_status (status),
-    INDEX idx_created_at (created_at),
-    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    INDEX idx_created_at (created_at)
 );
 
 -- 文章标签表
@@ -147,7 +143,5 @@ CREATE TABLE IF NOT EXISTS attachments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_user_id (user_id),
     INDEX idx_post_id (post_id),
-    INDEX idx_file_type (file_type),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE SET NULL
+    INDEX idx_file_type (file_type)
 );

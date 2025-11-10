@@ -52,7 +52,6 @@ const isRedisConnected = () => {
 // 确保Redis连接正常的辅助函数
 const ensureRedisConnection = async () => {
   if (!isRedisConnected()) {
-    console.warn('Redis未连接，尝试重新连接...');
     try {
       await redisClient.connect();
       console.log('Redis重新连接成功');
