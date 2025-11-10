@@ -7,17 +7,19 @@ const TagEntity = new EntitySchema({
     id: {
       type: 'int',
       primary: true,
-      generated: true
+      generated: 'increment'
     },
     name: {
       type: 'varchar',
       length: 30,
-      nullable: false
+      nullable: false,
+      unique: true
     },
     slug: {
       type: 'varchar',
       length: 100,
-      nullable: false
+      nullable: false,
+      unique: true
     },
     description: {
       type: 'varchar',

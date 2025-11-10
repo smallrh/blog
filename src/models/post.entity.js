@@ -5,27 +5,28 @@ const PostEntity = new EntitySchema({
   tableName: 'posts',
   columns: {
     id: {
-      type: 'int',
+      type: 'bigint',
       primary: true,
-      generated: true
+      generated: 'increment'
     },
     title: {
       type: 'varchar',
-      length: 255,
+      length: 200,
       nullable: false
     },
     slug: {
       type: 'varchar',
-      length: 255,
+      length: 200,
       nullable: false,
       unique: true
     },
     content: {
-      type: 'text',
+      type: 'longtext',
       nullable: false
     },
     summary: {
-      type: 'text',
+      type: 'varchar',
+      length: 500,
       nullable: true
     },
     cover_image: {
@@ -33,11 +34,36 @@ const PostEntity = new EntitySchema({
       length: 255,
       nullable: true
     },
-    view_count: {
+    user_id: {
+      type: 'varchar',
+      length: 50,
+      nullable: false,
+      name: 'user_id'
+    },
+    category_id: {
       type: 'int',
+      nullable: true,
+      name: 'category_id'
+    },
+    status: {
+      type: 'enum',
+      enum: ['draft', 'published', 'private', 'pending'],
+      default: 'draft'
+    },
+    is_top: {
+      type: 'tinyint',
       default: 0
     },
-    comment_count: {
+    password: {
+      type: 'varchar',
+      length: 100,
+      nullable: true
+    },
+    published_at: {
+      type: 'timestamp',
+      nullable: true
+    },
+    view_count: {
       type: 'int',
       default: 0
     },
@@ -45,42 +71,30 @@ const PostEntity = new EntitySchema({
       type: 'int',
       default: 0
     },
-    is_published: {
-      type: 'tinyint',
-      default: 1
-    },
-    is_featured: {
-      type: 'tinyint',
+    comment_count: {
+      type: 'int',
       default: 0
     },
-    seo_title: {
-      type: 'varchar',
-      length: 100,
-      nullable: true
-    },
-    seo_description: {
+    meta_keywords: {
       type: 'varchar',
       length: 255,
       nullable: true
     },
-    user_id: {
-      type: 'int',
-      name: 'user_id'
-    },
-    category_id: {
-      type: 'int',
-      name: 'category_id',
+    meta_description: {
+      type: 'varchar',
+      length: 500,
       nullable: true
     },
     created_at: {
       type: 'timestamp',
-      name: 'created_at',
-      createDate: true
+      default: () => 'CURRENT_TIMESTAMP',
+      name: 'created_at'
     },
     updated_at: {
       type: 'timestamp',
-      name: 'updated_at',
-      updateDate: true
+      default: () => 'CURRENT_TIMESTAMP',
+      onUpdate: 'CURRENT_TIMESTAMP',
+      name: 'updated_at'
     }
   },
   relations: {
@@ -103,7 +117,15 @@ const PostEntity = new EntitySchema({
         inverseJoinColumn: { name: 'tag_id' }
       }
     }
-  }
+  },
+  indices: [
+    { name: 'idx_user_id', columns: ['user_id'] },
+    { name: 'idx_category_id', columns: ['category_id'] },
+    { name: 'idx_status', columns: ['status'] },
+    { name: 'idx_is_top', columns: ['is_top'] },
+    { name: 'idx_published_at', columns: ['published_at'] },
+    { name: 'idx_slug', columns: ['slug'] }
+  ]
 });
 
 module.exports = PostEntity;

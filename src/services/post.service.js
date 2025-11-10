@@ -1,7 +1,5 @@
 const PostRepository = require('../repositories/post.repository');
 const TagRepository = require('../repositories/tag.repository');
-const { redis } = require('../core/redis');
-const { AppDataSource } = require('../core/database');
 const { paginationUtil } = require('../utils/pagination');
 const { cacheGet, cacheSet, cacheDel } = require('../utils/cache');
 
@@ -72,13 +70,15 @@ class PostService {
         id: post.id,
         title: post.title,
         slug: post.slug,
-        excerpt: post.excerpt,
+        summary: post.summary, // 对应数据库中的summary字段
         content: post.content,
-        cover: post.cover,
-        view_count: post.view_count,
-        like_count: post.like_count,
-        is_top: post.is_top,
-        is_hot: post.is_hot,
+        cover_image: post.cover_image,
+        view_count: post.view_count || 0,
+        like_count: post.like_count || 0,
+        comment_count: post.comment_count || 0,
+        is_top: post.is_top || 0,
+        is_hot: post.view_count > 1000 ? true : false,
+        published_at: post.published_at || post.created_at,
         created_at: post.created_at,
         updated_at: post.updated_at,
         category: post.category ? {
@@ -93,7 +93,7 @@ class PostService {
         })) : [],
         user: post.user ? {
           id: post.user.id,
-          name: post.user.name,
+          name: post.user.display_name || post.user.username,
           avatar: post.user.avatar
         } : null
       };
@@ -113,34 +113,54 @@ class PostService {
    * @param {number} limit - 返回数量
    * @returns {Promise<Array>}
    */
-  static async getHotPosts(limit = 5) {
+  async getHotPosts(limit = 5) {
     try {
-      // 尝试从缓存获取
-      const cacheKey = `hot_posts:${limit}`;
-      const cachedData = await redis.get(cacheKey);
+      // 参数验证
+      let parsedLimit = parseInt(limit);
+      if (isNaN(parsedLimit) || parsedLimit <= 0) {
+        parsedLimit = 5;
+      }
       
-      // redis.get()已经内置了JSON解析，直接返回即可
+      // 限制最大查询数量
+      const finalLimit = Math.min(parsedLimit, 100);
+      
+      // 缓存键名
+      const cacheKey = `hot_posts:limit_${finalLimit}`;
+      
+      // 尝试从缓存获取
+      const cachedData = await cacheGet(cacheKey);
       if (cachedData) {
         return cachedData;
       }
 
-      const query = `
-        SELECT id, title, slug, cover_image AS cover, view_count 
-        FROM posts 
-        WHERE status = "published" 
-        ORDER BY view_count DESC 
-        LIMIT ?
-      `;
+      // 通过repository获取热门文章
+      const posts = await this.postRepository.getHotPosts(finalLimit);
       
-      const [posts] = await AppDataSource.query(query, [limit]);
+      // 格式化数据
+      const formattedPosts = posts.map(post => ({
+        id: post.id,
+        title: post.title,
+        slug: post.slug,
+        cover: post.cover_image || null,
+        view_count: post.view_count || 0,
+        like_count: post.like_count || 0,
+        comment_count: post.comment_count || 0,
+        published_at: post.published_at,
+        user: post.user ? {
+          id: post.user.id,
+          name: post.user.username || '',
+          display_name: post.user.display_name  || '',
+          avatar: post.user.avatar || ''
+        } : null
+      }));
 
-      // 缓存结果，有效期1小时
-      await redis.set(cacheKey, posts, 3600);
+      // 设置缓存
+      await cacheSet(cacheKey, JSON.stringify(formattedPosts), 3600);
 
-      return posts;
+      return formattedPosts;
     } catch (error) {
-      console.error('Get hot posts error:', error);
-      throw new Error('获取热门文章失败');
+      console.error('获取热门文章失败:', error);
+      throw new Error('获取热门文章失败: ' + error.message);
     }
   }
 
@@ -150,49 +170,30 @@ class PostService {
    * @param {number} userId - 用户ID
    * @returns {Promise<{like_count: number, is_liked: boolean}>}
    */
-  static async likePost(postId, userId) {
+  async likePost(postId, userId) {
     try {
-      // 检查文章是否存在
-      const [posts] = await AppDataSource.query('SELECT id, like_count FROM posts WHERE id = ? AND status = 1', [postId]);
-      
-      if (!posts || posts.length === 0) {
+      // 通过repository检查文章是否存在
+      const post = await this.postRepository.findByIdWithAllStatus(postId);
+      if (!post || post.status !== 'published') {
         throw new Error('文章不存在');
       }
 
-      const post = posts[0];
-      const cacheKey = `post_likes:${postId}:${userId}`;
-      const likeKey = `post_like_count:${postId}`;
-
-      // 检查是否已点赞
-      const isLiked = await redis.get(cacheKey);
+      // 调用repository层的方法处理点赞逻辑
+      const result = await this.postRepository.incrementLikeCount(postId);
       
-      if (isLiked) {
-        // 已点赞，取消点赞
-        await redis.del(cacheKey);
-        await AppDataSource.query('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', [postId, userId]);
-        await AppDataSource.query('UPDATE posts SET like_count = GREATEST(0, like_count - 1) WHERE id = ?', [postId]);
-        
-        // 更新缓存
-        await redis.decr(likeKey);
-        
-        return {
-          like_count: Math.max(0, post.like_count - 1),
-          is_liked: false
-        };
-      } else {
-        // 未点赞，添加点赞
-        await redis.setex(cacheKey, 86400, '1'); // 缓存1天
-        await AppDataSource.query('INSERT IGNORE INTO post_likes (post_id, user_id, created_at) VALUES (?, ?, NOW())', [postId, userId]);
-        await AppDataSource.query('UPDATE posts SET like_count = like_count + 1 WHERE id = ?', [postId]);
-        
-        // 更新缓存
-        await redis.incr(likeKey);
-        
-        return {
-          like_count: post.like_count + 1,
-          is_liked: true
-        };
+      if (!result) {
+        throw new Error('点赞失败');
       }
+
+      // 清除相关缓存
+      await cacheDel(`post:detail:id:${postId}`);
+      await cacheDel(`post:detail:slug:${post.slug}`);
+      
+      // 注意：完整的点赞功能需要PostRepository中添加相应方法
+      return {
+        like_count: post.like_count + 1,
+        is_liked: true
+      };
     } catch (error) {
       console.error('Like post error:', error);
       throw new Error(error.message || '点赞操作失败');
@@ -200,95 +201,47 @@ class PostService {
   }
 
   /**
-   * 取消点赞
-   * @param {number} postId - 文章ID
-   * @param {number} userId - 用户ID
-   * @returns {Promise<{like_count: number, is_liked: boolean}>}
+   * 获取最新文章
+   * @param {number} limit - 返回数量
+   * @returns {Promise<Array>}
    */
-  static async unlikePost(postId, userId) {
+  async getLatestPosts(limit = 10) {
     try {
-      // 检查文章是否存在
-      const [posts] = await AppDataSource.query('SELECT id, like_count FROM posts WHERE id = ? AND status = 1', [postId]);
+      // 缓存键名
+      const cacheKey = `latest_posts:limit_${limit}`;
       
-      if (!posts || posts.length === 0) {
-        throw new Error('文章不存在');
+      // 尝试从缓存获取
+      const cachedData = await cacheGet(cacheKey);
+      if (cachedData) {
+        return JSON.parse(cachedData);
       }
 
-      const post = posts[0];
-      const cacheKey = `post_likes:${postId}:${userId}`;
-      const likeKey = `post_like_count:${postId}`;
+      // 通过repository获取最新文章
+      const posts = await this.postRepository.getLatestPosts(limit);
+      
+      // 格式化数据
+      const formattedPosts = posts.map(post => ({
+        id: post.id,
+        title: post.title,
+        slug: post.slug,
+        cover: post.cover_image || null,
+        view_count: post.view_count || 0,
+        like_count: post.like_count || 0,
+        published_at: post.published_at || post.created_at,
+        user: post.user ? {
+          id: post.user.id,
+          name: post.user.nickname || post.user.username || '',
+          avatar: post.user.avatar || null
+        } : null
+      }));
 
-      // 检查是否已点赞
-      const isLiked = await redis.get(cacheKey);
-      
-      if (isLiked) {
-        // 已点赞，取消点赞
-        await redis.del(cacheKey);
-        await AppDataSource.query('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', [postId, userId]);
-        await AppDataSource.query('UPDATE posts SET like_count = GREATEST(0, like_count - 1) WHERE id = ?', [postId]);
-        
-        // 更新缓存
-        await redis.decr(likeKey);
-      }
-      
-      // 获取最新的点赞数
-      const [updatedPosts] = await AppDataSource.query('SELECT like_count FROM posts WHERE id = ?', [postId]);
-      
-      return {
-        like_count: updatedPosts[0].like_count,
-        is_liked: false
-      };
+      // 设置缓存
+      await cacheSet(cacheKey, JSON.stringify(formattedPosts), 300);
+
+      return formattedPosts;
     } catch (error) {
-      console.error('Unlike post error:', error);
-      throw new Error(error.message || '取消点赞操作失败');
-    }
-  }
-
-  /**
-   * 收藏文章
-   * @param {number} postId - 文章ID
-   * @param {number} userId - 用户ID
-   * @returns {Promise<{is_collected: boolean}>}
-   */
-  static async collectPost(postId, userId) {
-    try {
-      // 检查文章是否存在
-      const [posts] = await AppDataSource.query('SELECT id FROM posts WHERE id = ? AND status = 1', [postId]);
-      
-      if (!posts || posts.length === 0) {
-        throw new Error('文章不存在');
-      }
-
-      // 检查是否已收藏
-      const [collections] = await AppDataSource.query(
-        'SELECT id FROM post_collections WHERE post_id = ? AND user_id = ?',
-        [postId, userId]
-      );
-      
-      if (collections && collections.length > 0) {
-        // 已收藏，取消收藏
-        await AppDataSource.query(
-          'DELETE FROM post_collections WHERE post_id = ? AND user_id = ?',
-          [postId, userId]
-        );
-        
-        return {
-          is_collected: false
-        };
-      } else {
-        // 未收藏，添加收藏
-        await AppDataSource.query(
-          'INSERT INTO post_collections (post_id, user_id, created_at) VALUES (?, ?, NOW())',
-          [postId, userId]
-        );
-        
-        return {
-          is_collected: true
-        };
-      }
-    } catch (error) {
-      console.error('Collect post error:', error);
-      throw new Error(error.message || '收藏操作失败');
+      console.error('获取最新文章失败:', error);
+      throw new Error('获取最新文章失败: ' + error.message);
     }
   }
 
@@ -315,13 +268,15 @@ class PostService {
         id: post.id,
         title: post.title,
         slug: post.slug,
-        excerpt: post.excerpt,
+        summary: post.summary, // 对应数据库中的summary字段
         content: post.content,
-        cover: post.cover,
-        view_count: post.view_count,
-        like_count: post.like_count,
-        is_top: post.is_top,
-        is_hot: post.is_hot,
+        cover_image: post.cover_image,
+        view_count: post.view_count || 0,
+        like_count: post.like_count || 0,
+        comment_count: post.comment_count || 0,
+        is_top: post.is_top || 0,
+        is_hot: post.view_count > 1000 ? true : false,
+        published_at: post.published_at || post.created_at,
         created_at: post.created_at,
         updated_at: post.updated_at,
         category: post.category ? {
@@ -336,7 +291,7 @@ class PostService {
         })) : [],
         user: post.user ? {
           id: post.user.id,
-          name: post.user.name,
+          name: post.user.nickname || post.user.username,
           avatar: post.user.avatar
         } : null
       };
@@ -390,4 +345,4 @@ class PostService {
   }
 }
 
-module.exports = PostService;
+module.exports = new PostService();

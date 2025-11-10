@@ -4,7 +4,7 @@ require('dotenv/config');
 const config = {
   // 服务器配置
   server: {
-    port: process.env.PORT || 9000,
+    port: process.env.PORT || 9001,
     env: process.env.NODE_ENV || 'development'
   },
 

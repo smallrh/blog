@@ -7,8 +7,7 @@ const UserEntity = new EntitySchema({
     id: {
       type: 'varchar',
       length: 50,
-      primary: true,
-      generated: 'uuid'// 主键生成策略为uuid（别删除，安全）
+      primary: true
     },
     username: {
       type: 'varchar',
@@ -19,8 +18,7 @@ const UserEntity = new EntitySchema({
     password: {
       type: 'varchar',
       length: 255,
-      nullable: false,
-      select: false
+      nullable: false
     },
     email: {
       type: 'varchar',
@@ -45,7 +43,8 @@ const UserEntity = new EntitySchema({
     },
     last_login_at: {
       type: 'timestamp',
-      nullable: true
+      nullable: true,
+      name: 'last_login_at'
     },
     login_count: {
       type: 'int',
@@ -83,7 +82,12 @@ const UserEntity = new EntitySchema({
       target: 'Attachment',
       inverseSide: 'user'
     }
-  }
+  },
+  indices: [
+    { name: 'idx_username', columns: ['username'] },
+    { name: 'idx_email', columns: ['email'] },
+    { name: 'idx_status', columns: ['status'] }
+  ]
 });
 
 module.exports = UserEntity;

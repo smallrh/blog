@@ -5,7 +5,7 @@ const PostTagEntity = new EntitySchema({
   tableName: 'post_tags',
   columns: {
     post_id: {
-      type: 'bigint',
+      type: 'int',
       nullable: false,
       primary: true,
       name: 'post_id'
@@ -18,7 +18,7 @@ const PostTagEntity = new EntitySchema({
     },
     created_at: {
       type: 'timestamp',
-      nullable: true,
+      default: () => 'CURRENT_TIMESTAMP',
       name: 'created_at'
     }
   },
@@ -26,14 +26,20 @@ const PostTagEntity = new EntitySchema({
     post: {
       type: 'many-to-one',
       target: 'Post',
-      joinColumn: { name: 'post_id' }
+      joinColumn: { name: 'post_id' },
+      onDelete: 'CASCADE'
     },
     tag: {
       type: 'many-to-one',
       target: 'Tag',
-      joinColumn: { name: 'tag_id' }
+      joinColumn: { name: 'tag_id' },
+      onDelete: 'CASCADE'
     }
-  }
+  },
+  indices: [
+    { name: 'idx_post_id', columns: ['post_id'] },
+    { name: 'idx_tag_id', columns: ['tag_id'] }
+  ]
 });
 
 module.exports = PostTagEntity;

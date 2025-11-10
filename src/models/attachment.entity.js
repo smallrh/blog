@@ -5,58 +5,55 @@ const AttachmentEntity = new EntitySchema({
   tableName: 'attachments',
   columns: {
     id: {
-      type: 'int',
-      primary: true,
-      generated: true
-    },
-    file_name: {
-      type: 'varchar',
-      length: 255,
-      nullable: false,
-      name: 'file_name'
-    },
-    file_path: {
-      type: 'varchar',
-      length: 255,
-      nullable: false,
-      name: 'file_path'
-    },
-    file_type: {
-      type: 'varchar',
-      length: 100,
-      nullable: false,
-      name: 'file_type'
-    },
-    file_size: {
       type: 'bigint',
-      nullable: false,
-      name: 'file_size'
+      primary: true,
+      generated: 'increment'
     },
-    url: {
+    filename: {
+      type: 'varchar',
+      length: 255,
+      nullable: false
+    },
+    original_name: {
       type: 'varchar',
       length: 255,
       nullable: true
     },
-    thumbnail_url: {
+    file_path: {
       type: 'varchar',
-      length: 255,
-      nullable: true,
-      name: 'thumbnail_url'
+      length: 500,
+      nullable: false,
+      name: 'file_path'
     },
-    media_type: {
+    file_size: {
+      type: 'int',
+      nullable: false,
+      name: 'file_size'
+    },
+    mime_type: {
+      type: 'varchar',
+      length: 100,
+      nullable: true
+    },
+    file_type: {
       type: 'enum',
-      enum: ['image', 'document', 'video', 'audio', 'other'],
-      default: 'other',
-      name: 'media_type'
+      enum: ['image', 'video', 'audio', 'document', 'other'],
+      default: 'other'
     },
     user_id: {
-      type: 'int',
+      type: 'varchar',
+      length: 50,
+      nullable: false,
       name: 'user_id'
+    },
+    post_id: {
+      type: 'bigint',
+      nullable: true
     },
     created_at: {
       type: 'timestamp',
-      name: 'created_at',
-      createDate: true
+      default: () => 'CURRENT_TIMESTAMP',
+      name: 'created_at'
     }
   },
   relations: {
@@ -65,7 +62,10 @@ const AttachmentEntity = new EntitySchema({
       target: 'User',
       joinColumn: { name: 'user_id' }
     }
-  }
+  },
+  indices: [
+    { name: 'idx_user_id', columns: ['user_id'] }
+  ]
 });
 
 module.exports = AttachmentEntity;

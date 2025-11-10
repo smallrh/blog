@@ -7,7 +7,7 @@ const SettingsEntity = new EntitySchema({
     id: {
       type: 'int',
       primary: true,
-      generated: true
+      generated: 'increment'
     },
     key: {
       type: 'varchar',
@@ -16,7 +16,7 @@ const SettingsEntity = new EntitySchema({
       unique: true
     },
     value: {
-      type: 'longtext',
+      type: 'text',
       nullable: true
     },
     description: {
@@ -25,15 +25,30 @@ const SettingsEntity = new EntitySchema({
       nullable: true
     },
     type: {
-      type: 'enum',
-      enum: ['system', 'user'],
+      type: 'varchar',
+      length: 20,
       default: 'system'
     },
     status: {
       type: 'tinyint',
       default: 1
+    },
+    created_at: {
+      type: 'timestamp',
+      default: () => 'CURRENT_TIMESTAMP',
+      name: 'created_at'
+    },
+    updated_at: {
+      type: 'timestamp',
+      default: () => 'CURRENT_TIMESTAMP',
+      onUpdate: 'CURRENT_TIMESTAMP',
+      name: 'updated_at'
     }
-  }
+  },
+  indices: [
+    { name: 'idx_key', columns: ['key'] },
+    { name: 'idx_status', columns: ['status'] }
+  ]
 });
 
 module.exports = SettingsEntity;

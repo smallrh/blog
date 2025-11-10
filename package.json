@@ -7,8 +7,8 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "node --test",
-    "test:user": "node --test test/user.test.js",
-    "test:post": "node --test test/post.test.js"
+    "test:user": "node --test test/frontend/test_user.js",
+    "test:post": "node --test test/frontend/test_posts.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

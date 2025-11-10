@@ -7,11 +7,11 @@ const CategoryEntity = new EntitySchema({
     id: {
       type: 'int',
       primary: true,
-      generated: true
+      generated: 'increment'
     },
     name: {
       type: 'varchar',
-      length: 100,
+      length: 50,
       nullable: false
     },
     slug: {
@@ -20,20 +20,25 @@ const CategoryEntity = new EntitySchema({
       nullable: false,
       unique: true
     },
+    description: {
+      type: 'varchar',
+      length: 255,
+      nullable: true
+    },
     parent_id: {
       type: 'int',
-      nullable: true,
-      name: 'parent_id'
-    },
-    post_count: {
-      type: 'int',
       default: 0,
-      name: 'post_count'
+      name: 'parent_id'
     },
     sort_order: {
       type: 'int',
       default: 0,
       name: 'sort_order'
+    },
+    post_count: {
+      type: 'int',
+      default: 0,
+      name: 'post_count'
     },
     status: {
       type: 'tinyint',
@@ -41,13 +46,14 @@ const CategoryEntity = new EntitySchema({
     },
     created_at: {
       type: 'timestamp',
-      name: 'created_at',
-      createDate: true
+      default: () => 'CURRENT_TIMESTAMP',
+      name: 'created_at'
     },
     updated_at: {
       type: 'timestamp',
-      name: 'updated_at',
-      updateDate: true
+      default: () => 'CURRENT_TIMESTAMP',
+      onUpdate: 'CURRENT_TIMESTAMP',
+      name: 'updated_at'
     }
   },
   relations: {
@@ -56,7 +62,11 @@ const CategoryEntity = new EntitySchema({
       target: 'Post',
       inverseSide: 'category'
     }
-  }
+  },
+  indices: [
+    { name: 'idx_parent_id', columns: ['parent_id'] },
+    { name: 'idx_sort_order', columns: ['sort_order'] }
+  ]
 });
 
 module.exports = CategoryEntity;

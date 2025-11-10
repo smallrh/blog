@@ -26,7 +26,7 @@ class PostRepository {
     const queryBuilder = this.repo.createQueryBuilder('p')
       .leftJoinAndSelect('p.category', 'c')
       .leftJoinAndSelect('p.user', 'u')
-      .where('p.status = 1');
+      .where('p.status = :status', { status: 'published' });
 
     // 添加筛选条件
     if (filters.categoryId) {
@@ -48,7 +48,8 @@ class PostRepository {
 
     // 查询列表
     const posts = await queryBuilder
-      .orderBy('p.created_at', 'DESC')
+      .orderBy('p.is_top', 'DESC') // 置顶文章优先
+      .addOrderBy('p.published_at', 'DESC')
       .skip(offset)
       .take(limit)
       .getMany();
@@ -63,7 +64,7 @@ class PostRepository {
    */
   async findById(id) {
     return this.repo.findOne({
-      where: { id, status: 1 },
+      where: { id, status: 'published' },
       relations: ['category', 'user', 'tags']
     });
   }
@@ -75,7 +76,31 @@ class PostRepository {
    */
   async findBySlug(slug) {
     return this.repo.findOne({
-      where: { slug, status: 1 },
+      where: { slug, status: 'published' },
+      relations: ['category', 'user', 'tags']
+    });
+  }
+
+  /**
+   * 通过ID获取文章（包括私密文章）
+   * @param {number} id - 文章ID
+   * @returns {Promise<PostEntity|null>}
+   */
+  async findByIdWithAllStatus(id) {
+    return this.repo.findOne({
+      where: { id },
+      relations: ['category', 'user', 'tags']
+    });
+  }
+
+  /**
+   * 通过Slug获取文章（包括私密文章）
+   * @param {string} slug - 文章别名
+   * @returns {Promise<PostEntity|null>}
+   */
+  async findBySlugWithAllStatus(slug) {
+    return this.repo.findOne({
+      where: { slug },
       relations: ['category', 'user', 'tags']
     });
   }
@@ -118,7 +143,7 @@ class PostRepository {
    */
   async update(id, data) {
     await this.repo.update({ id }, data);
-    return this.findById(id);
+    return this.findByIdWithAllStatus(id);
   }
 
   /**
@@ -155,8 +180,9 @@ class PostRepository {
    */
   async getHotPosts(limit = 10) {
     return this.repo.find({
-      where: { status: 1 },
-      order: { view_count: 'DESC', created_at: 'DESC' },
+      where: { status: 'published' },
+      relations: ['user'],
+      order: { is_top: 'DESC', view_count: 'DESC', published_at: 'DESC' },
       take: limit
     });
   }
@@ -168,10 +194,41 @@ class PostRepository {
    */
   async getLatestPosts(limit = 10) {
     return this.repo.find({
-      where: { status: 1 },
-      order: { created_at: 'DESC' },
+      where: { status: 'published' },
+      relations: ['user'],
+      order: { is_top: 'DESC', published_at: 'DESC' },
       take: limit
     });
+  }
+
+  /**
+   * 验证文章密码
+   * @param {number} id - 文章ID
+   * @param {string} password - 文章密码
+   * @returns {Promise<boolean>}
+   */
+  async verifyPassword(id, password) {
+    const post = await this.repo.findOne({
+      where: { id, status: 'private' },
+      select: ['password']
+    });
+    
+    if (!post || !post.password) {
+      return false;
+    }
+    
+    return post.password === password;
+  }
+
+  /**
+   * 增加文章评论数
+   * @param {number} id - 文章ID
+   * @param {number} increment - 增加数量
+   * @returns {Promise<boolean>}
+   */
+  async incrementCommentCount(id, increment = 1) {
+    const result = await this.repo.increment({ id }, 'comment_count', increment);
+    return result.affected > 0;
   }
 }
 

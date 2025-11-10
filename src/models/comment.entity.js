@@ -5,53 +5,70 @@ const CommentEntity = new EntitySchema({
   tableName: 'comments',
   columns: {
     id: {
-      type: 'int',
+      type: 'bigint',
       primary: true,
-      generated: true
+      generated: 'increment'
+    },
+    post_id: {
+      type: 'bigint',
+      nullable: false,
+      name: 'post_id'
+    },
+    user_id: {
+      type: 'varchar',
+      length: 50,
+      nullable: true,
+      name: 'user_id'
+    },
+    parent_id: {
+      type: 'bigint',
+      default: 0,
+      name: 'parent_id'
+    },
+    author_name: {
+      type: 'varchar',
+      length: 100,
+      nullable: true
+    },
+    author_email: {
+      type: 'varchar',
+      length: 100,
+      nullable: true
+    },
+    author_url: {
+      type: 'varchar',
+      length: 255,
+      nullable: true
+    },
+    author_ip: {
+      type: 'varchar',
+      length: 45,
+      nullable: true,
+      name: 'author_ip'
     },
     content: {
       type: 'text',
       nullable: false
     },
-    parent_id: {
-      type: 'int',
-      nullable: true,
-      name: 'parent_id'
-    },
-    user_agent: {
-      type: 'varchar',
-      length: 50,
-      nullable: true,
-      name: 'user_agent'
-    },
-    ip_address: {
-      type: 'varchar',
-      length: 50,
-      nullable: true,
-      name: 'ip_address'
-    },
     status: {
-      type: 'tinyint',
-      default: 1
+      type: 'enum',
+      enum: ['pending', 'approved', 'spam', 'trash'],
+      default: 'pending'
     },
-    user_id: {
+    like_count: {
       type: 'int',
-      nullable: true,
-      name: 'user_id'
-    },
-    post_id: {
-      type: 'int',
-      name: 'post_id'
+      default: 0
     },
     created_at: {
       type: 'timestamp',
-      name: 'created_at',
-      createDate: true
+      default: () => 'CURRENT_TIMESTAMP',
+      name: 'created_at'
     },
     updated_at: {
       type: 'timestamp',
-      name: 'updated_at',
-      updateDate: true
+      default: () => 'CURRENT_TIMESTAMP',
+      onUpdate: 'CURRENT_TIMESTAMP',
+      name: 'updated_at'
     }
   },
   relations: {
@@ -64,9 +81,16 @@ const CommentEntity = new EntitySchema({
     post: {
       type: 'many-to-one',
       target: 'Post',
-      joinColumn: { name: 'post_id' }
+      joinColumn: { name: 'post_id' },
+      nullable: false
     }
-  }
+  },
+  indices: [
+    { name: 'idx_post_id', columns: ['post_id'] },
+    { name: 'idx_user_id', columns: ['user_id'] },
+    { name: 'idx_parent_id', columns: ['parent_id'] },
+    { name: 'idx_status', columns: ['status'] }
+  ]
 });
 
 module.exports = CommentEntity;
